@@ -1,0 +1,3597 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>APEX HYPERCAR SIMULATOR 3D — Parte 2: Pista, Cabina y Físicas</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Post-procesamiento (EffectComposer + UnrealBloom) para three r128 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <!-- Google Fonts: Orbitron, Rajdhani & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --bg-obsidian: #07070a;
+            --bg-panel: rgba(14, 14, 20, 0.72);
+            --border-glass: rgba(255, 255, 255, 0.09);
+            --border-crimson: rgba(229, 56, 71, 0.45);
+            --accent-crimson: #e53847;
+            --accent-crimson-soft: rgba(229, 56, 71, 0.18);
+            --accent-glow: rgba(229, 56, 71, 0.35);
+            --text-primary: #f4f4f6;
+            --text-muted: #9496a1;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-obsidian);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+        }
+
+        .font-display {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .font-tech {
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        /* 3D Canvas Background */
+        #showroom-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            display: block;
+            touch-action: none;
+        }
+
+        /* Ambient Vignette & Subtle Scanline Overlay */
+        .vignette-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+            background: 
+                radial-gradient(circle at 50% 45%, transparent 35%, rgba(5, 5, 8, 0.75) 100%),
+                linear-gradient(to top, rgba(5, 5, 8, 0.92) 0%, transparent 28%, transparent 78%, rgba(5, 5, 8, 0.85) 100%);
+        }
+
+        /* Glassmorphism Panels */
+        .glass-panel {
+            background: var(--bg-panel);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid var(--border-glass);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .glass-panel-crimson {
+            background: linear-gradient(135deg, rgba(24, 13, 17, 0.82) 0%, rgba(12, 12, 18, 0.88) 100%);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-crimson);
+            box-shadow: 0 12px 36px rgba(229, 56, 71, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        }
+
+        /* Luxury Interactive Buttons */
+        .btn-luxury {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(20, 20, 28, 0.75);
+        }
+
+        .btn-luxury:hover {
+            border-color: rgba(229, 56, 71, 0.55);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(229, 56, 71, 0.2);
+        }
+
+        .btn-luxury:active {
+            transform: translateY(1px) scale(0.985);
+        }
+
+        .btn-luxury.active {
+            background: linear-gradient(135deg, rgba(229, 56, 71, 0.28) 0%, rgba(140, 20, 32, 0.38) 100%);
+            border-color: var(--accent-crimson);
+            box-shadow: 0 0 22px rgba(229, 56, 71, 0.32), inset 0 0 12px rgba(229, 56, 71, 0.2);
+        }
+
+        /* Primary CTA Button */
+        .btn-crimson-cta {
+            background: linear-gradient(135deg, #e53847 0%, #b81d2a 100%);
+            border: 1px solid rgba(255, 130, 140, 0.45);
+            box-shadow: 0 8px 28px rgba(229, 56, 71, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .btn-crimson-cta:hover {
+            background: linear-gradient(135deg, #f04352 0%, #cc2230 100%);
+            box-shadow: 0 10px 34px rgba(229, 56, 71, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .btn-crimson-cta:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        /* Paint Swatch Selector */
+        .paint-swatch {
+            width: 34px;
+            height: 34px;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            position: relative;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .paint-swatch:hover {
+            transform: scale(1.12);
+        }
+
+        .paint-swatch.active {
+            transform: scale(1.18);
+            border-color: #ffffff;
+            box-shadow: 0 0 0 3px rgba(229, 56, 71, 0.7), 0 4px 14px rgba(0, 0, 0, 0.6);
+        }
+
+        /* Custom Range Slider */
+        input[type="range"].luxury-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 999px;
+            outline: none;
+        }
+
+        input[type="range"].luxury-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #e53847;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 12px rgba(229, 56, 71, 0.8);
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+
+        input[type="range"].luxury-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+
+        /* Modal Transitions */
+        .modal-backdrop {
+            background: rgba(4, 4, 7, 0.78);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .modal-content {
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
+        }
+
+        .modal-hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .modal-hidden .modal-content {
+            transform: scale(0.94) translateY(16px);
+            opacity: 0;
+        }
+
+        /* Stat Bar Animation */
+        .stat-bar-fill {
+            transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        /* Custom Scrollbar for Modals on small screens */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.03);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(229, 56, 71, 0.4);
+            border-radius: 999px;
+        }
+
+        /* ==========================================
+           ESTILOS PARTE 2: HUD DE CARRERA Y PEDALES MULTITOUCH
+           ========================================== */
+        .pedal-touch {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: transform 0.08s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+
+        .pedal-touch.pressed {
+            transform: scale(0.93) translateY(3px);
+            border-color: #e53847 !important;
+            box-shadow: 0 0 26px rgba(229, 56, 71, 0.65), inset 0 0 15px rgba(229, 56, 71, 0.35) !important;
+        }
+
+        .pedal-gas.pressed {
+            border-color: #10b981 !important;
+            box-shadow: 0 0 28px rgba(16, 185, 129, 0.65), inset 0 0 16px rgba(16, 185, 129, 0.35) !important;
+        }
+
+        .rpm-bar-segment {
+            transition: opacity 0.06s ease, transform 0.06s ease;
+        }
+
+        @keyframes damageFlash {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.55; }
+        }
+
+        .collision-flash {
+            animation: damageFlash 0.28s ease-out;
+        }
+
+        /* ==========================================
+           ADAPTABILIDAD VERTICAL (PORTRAIT) Y HORIZONTAL (LANDSCAPE)
+           ========================================== */
+        @media (orientation: portrait) {
+            #race-hud-top {
+                flex-wrap: wrap;
+                gap: 0.45rem;
+            }
+            #race-telemetry-center {
+                order: -1;
+                width: 100%;
+                flex-direction: row;
+                justify-content: space-between;
+                padding: 0.5rem 0.9rem;
+            }
+            #race-telemetry-center #hud-rpm-leds {
+                width: 32%;
+                margin-bottom: 0;
+            }
+            #race-controls-bottom {
+                padding-bottom: env(safe-area-inset-bottom, 0.6rem);
+            }
+            .pedal-btn-portrait {
+                width: 4.1rem;
+                height: 5.4rem;
+            }
+            .gas-btn-portrait {
+                width: 4.8rem;
+                height: 6.8rem;
+            }
+            .steer-btn-portrait {
+                width: 4.1rem;
+                height: 4.1rem;
+            }
+        }
+
+        @media (orientation: landscape) and (max-height: 540px) {
+            #ui-layer {
+                padding: 0.5rem 1rem;
+            }
+            #race-hud-layer {
+                padding: 0.5rem 1rem;
+            }
+            .pedal-btn-portrait {
+                width: 4.2rem;
+                height: 4.8rem;
+            }
+            .gas-btn-portrait {
+                width: 4.8rem;
+                height: 5.8rem;
+            }
+            .steer-btn-portrait {
+                width: 4.2rem;
+                height: 4.2rem;
+            }
+        }
+    </style>
+</head>
+
+<body class="relative select-none">
+
+    <!-- 3D WebGL Showroom Canvas -->
+    <canvas id="showroom-canvas"></canvas>
+
+    <!-- Cinematic Vignette Overlay -->
+    <div class="vignette-overlay"></div>
+
+    <!-- MAIN UI CONTAINER -->
+    <div id="ui-layer" class="relative z-10 w-full h-full flex flex-col justify-between p-3 sm:p-5 md:p-7 pointer-events-none">
+
+        <!-- TOP BAR: Brand Identity, Status & Quick Actions -->
+        <header class="w-full flex items-center justify-between gap-2 pointer-events-auto">
+            <!-- Brand Title -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-panel-crimson flex items-center justify-center shadow-lg">
+                    <i class="fa-solid fa-gauge-high text-[#e53847] text-lg sm:text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-display font-extrabold text-base sm:text-xl tracking-wider text-white">
+                            APEX <span class="text-[#e53847]">RTX</span>
+                        </h1>
+                        <span class="text-[10px] font-tech font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-[#e53847]/20 border border-[#e53847]/40 text-[#ff7582]">
+                            PARTE 2/3
+                        </span>
+                    </div>
+                    <p class="text-[11px] sm:text-xs text-zinc-400 font-tech tracking-widest uppercase">
+                        Hypercar Showroom & F1 Track Physics
+                    </p>
+                </div>
+            </div>
+
+            <!-- Right Controls: Camera / Lights / Settings -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <!-- Toggle Headlights Button -->
+                <button id="btn-toggle-lights" onclick="toggleCarLights()" title="Alternar Faros LED"
+                    class="btn-luxury active px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl flex items-center gap-2 text-xs sm:text-sm font-tech font-semibold tracking-wider text-zinc-200">
+                    <i class="fa-solid fa-lightbulb text-[#e53847]"></i>
+                    <span class="hidden md:inline">FAROS</span>
+                </button>
+
+                <!-- Toggle Camera Angle Button -->
+                <button id="btn-camera-view" onclick="cycleCameraPreset()" title="Cambiar Ángulo de Cámara"
+                    class="btn-luxury px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl flex items-center gap-2 text-xs sm:text-sm font-tech font-semibold tracking-wider text-zinc-200">
+                    <i class="fa-solid fa-video text-zinc-300"></i>
+                    <span id="camera-label" class="hidden sm:inline">ORBITAL</span>
+                </button>
+
+                <!-- Graphics Badge (Dynamic) -->
+                <div class="hidden lg:flex items-center gap-2 glass-panel px-3 py-2 rounded-xl text-xs font-tech tracking-wider text-zinc-300">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="hud-quality-badge">ULTRA RTX</span>
+                    <span class="text-zinc-600">|</span>
+                    <span id="hud-dpr-badge" class="text-zinc-400">DPR 1.5x</span>
+                </div>
+
+                <!-- Settings Modal Trigger -->
+                <button onclick="openModal('settings-modal')"
+                    class="btn-luxury px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl flex items-center gap-2 text-xs sm:text-sm font-tech font-bold tracking-wider text-white">
+                    <i class="fa-solid fa-sliders text-[#e53847]"></i>
+                    <span class="hidden sm:inline">AJUSTES</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- MIDDLE SECTION: Car Telemetry Specs (Left) & Interactive Hint / Paint Selector (Right) -->
+        <div class="w-full flex flex-col md:flex-row items-start md:items-center justify-between gap-3 my-auto py-2">
+
+            <!-- Left Card: Live Hypercar Specifications -->
+            <aside class="glass-panel rounded-2xl p-3.5 sm:p-4 w-full max-w-[300px] sm:max-w-[320px] pointer-events-auto transition-all duration-300">
+                <div class="flex items-center justify-between border-b border-white/10 pb-2.5 mb-3">
+                    <div>
+                        <span id="car-brand-badge" class="text-[10px] font-tech font-bold uppercase tracking-[0.2em] text-[#e53847] block">
+                            SCUDERIA ITALIA
+                        </span>
+                        <h2 id="car-title-display" class="font-display font-bold text-lg sm:text-xl text-white tracking-wide">
+                            Ferrari SF90
+                        </h2>
+                    </div>
+                    <span id="car-class-badge" class="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 font-display text-xs font-bold text-zinc-200">
+                        S+ 998
+                    </span>
+                </div>
+
+                <!-- Key Numeric Metrics -->
+                <div class="grid grid-cols-3 gap-2 mb-3.5 text-center">
+                    <div class="bg-black/40 border border-white/5 rounded-xl p-2">
+                        <span class="text-[10px] text-zinc-400 font-tech uppercase block">Potencia</span>
+                        <span id="spec-hp" class="font-display font-bold text-xs sm:text-sm text-white">1000 CV</span>
+                    </div>
+                    <div class="bg-black/40 border border-white/5 rounded-xl p-2">
+                        <span class="text-[10px] text-zinc-400 font-tech uppercase block">0-100 km/h</span>
+                        <span id="spec-accel" class="font-display font-bold text-xs sm:text-sm text-[#e53847]">2.5 s</span>
+                    </div>
+                    <div class="bg-black/40 border border-white/5 rounded-xl p-2">
+                        <span class="text-[10px] text-zinc-400 font-tech uppercase block">Vel. Máx</span>
+                        <span id="spec-topspeed" class="font-display font-bold text-xs sm:text-sm text-white">340 km/h</span>
+                    </div>
+                </div>
+
+                <!-- Dynamic Performance Bars -->
+                <div class="space-y-2.5 text-xs font-tech">
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-zinc-400 uppercase tracking-wider">Velocidad Punta</span>
+                            <span id="bar-speed-val" class="text-zinc-200 font-bold">96%</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div id="bar-speed" class="stat-bar-fill h-full bg-gradient-to-r from-[#e53847] to-[#ff7582] rounded-full" style="width: 96%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-zinc-400 uppercase tracking-wider">Aceleración Híbrida</span>
+                            <span id="bar-accel-val" class="text-zinc-200 font-bold">98%</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div id="bar-accel" class="stat-bar-fill h-full bg-gradient-to-r from-[#e53847] to-[#ff7582] rounded-full" style="width: 98%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-zinc-400 uppercase tracking-wider">Carga Aerodinámica</span>
+                            <span id="bar-aero-val" class="text-zinc-200 font-bold">92%</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div id="bar-aero" class="stat-bar-fill h-full bg-gradient-to-r from-[#e53847] to-[#ff7582] rounded-full" style="width: 92%"></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Right Card: Real-Time RTX Paint Customizer -->
+            <aside class="glass-panel rounded-2xl p-3.5 sm:p-4 pointer-events-auto self-end md:self-center">
+                <div class="flex items-center justify-between gap-4 mb-2.5">
+                    <span class="text-[11px] font-tech font-bold uppercase tracking-widest text-zinc-300 flex items-center gap-1.5">
+                        <i class="fa-solid fa-spray-can-sparkles text-[#e53847]"></i>
+                        Pintura RTX Clearcoat
+                    </span>
+                    <span id="paint-name-label" class="text-xs font-tech font-semibold text-[#ff7582]">
+                        Rojo Corsa
+                    </span>
+                </div>
+
+                <!-- 4 Required Paint Swatches -->
+                <div class="flex items-center gap-3 sm:gap-3.5">
+                    <!-- Rojo Corsa -->
+                    <button onclick="selectPaint('rojo_corsa')" id="swatch-rojo_corsa"
+                        class="paint-swatch active"
+                        style="background: radial-gradient(circle at 30% 30%, #ff4d5a, #c91422 65%, #6b050d 100%);"
+                        title="Rojo Corsa"></button>
+
+                    <!-- Platino Cromo -->
+                    <button onclick="selectPaint('platino_cromo')" id="swatch-platino_cromo"
+                        class="paint-swatch"
+                        style="background: radial-gradient(circle at 30% 30%, #ffffff, #cfd6df 55%, #6e7682 100%);"
+                        title="Platino Cromo"></button>
+
+                    <!-- Negro Mate -->
+                    <button onclick="selectPaint('negro_mate')" id="swatch-negro_mate"
+                        class="paint-swatch"
+                        style="background: radial-gradient(circle at 30% 30%, #3a3b42, #17181c 65%, #08080a 100%);"
+                        title="Negro Mate"></button>
+
+                    <!-- Amarillo -->
+                    <button onclick="selectPaint('amarillo')" id="swatch-amarillo"
+                        class="paint-swatch"
+                        style="background: radial-gradient(circle at 30% 30%, #fff066, #f5b700 65%, #9c6d00 100%);"
+                        title="Amarillo Modena"></button>
+                </div>
+
+                <div class="mt-2.5 pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-zinc-400 font-tech">
+                    <span><i class="fa-solid fa-hand-pointer mr-1 text-zinc-500"></i>Arrastra para rotar 360°</span>
+                    <button onclick="toggleAeroSpoiler()" class="text-[#ff7582] hover:underline font-semibold ml-2">
+                        Alerón Activo
+                    </button>
+                </div>
+            </aside>
+        </div>
+
+        <!-- BOTTOM DOCK: Hypercar Model Selector & Race Lobby CTA -->
+        <footer class="w-full flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pointer-events-auto">
+
+            <!-- 3 Hypercar Selector Cards -->
+            <div class="grid grid-cols-3 gap-2 sm:gap-3 flex-1">
+                <!-- Model 1: Ferrari SF90 -->
+                <button id="car-btn-sf90" onclick="selectCarModel('Ferrari SF90')"
+                    class="btn-luxury active rounded-2xl p-2.5 sm:p-3.5 text-left flex flex-col justify-between group">
+                    <div class="flex items-center justify-between w-full mb-1">
+                        <span class="text-[10px] font-tech font-bold uppercase tracking-widest text-[#e53847]">ITALIA • V8 PHEV</span>
+                        <i class="fa-solid fa-circle-check text-[#e53847] text-xs opacity-100 transition-opacity" id="check-sf90"></i>
+                    </div>
+                    <div class="font-display font-bold text-xs sm:text-base text-white truncate">
+                        Ferrari SF90
+                    </div>
+                    <div class="text-[10px] sm:text-xs font-tech text-zinc-400 mt-0.5 flex items-center justify-between">
+                        <span>1000 CV</span>
+                        <span class="text-zinc-300">AWD</span>
+                    </div>
+                </button>
+
+                <!-- Model 2: Lamborghini Revuelto -->
+                <button id="car-btn-revuelto" onclick="selectCarModel('Lamborghini Revuelto')"
+                    class="btn-luxury rounded-2xl p-2.5 sm:p-3.5 text-left flex flex-col justify-between group">
+                    <div class="flex items-center justify-between w-full mb-1">
+                        <span class="text-[10px] font-tech font-bold uppercase tracking-widest text-zinc-400">ITALIA • V12 HPEV</span>
+                        <i class="fa-solid fa-circle-check text-[#e53847] text-xs opacity-0 transition-opacity" id="check-revuelto"></i>
+                    </div>
+                    <div class="font-display font-bold text-xs sm:text-base text-white truncate">
+                        Lamborghini Revuelto
+                    </div>
+                    <div class="text-[10px] sm:text-xs font-tech text-zinc-400 mt-0.5 flex items-center justify-between">
+                        <span>1015 CV</span>
+                        <span class="text-zinc-300">AWD</span>
+                    </div>
+                </button>
+
+                <!-- Model 3: McLaren P1 -->
+                <button id="car-btn-p1" onclick="selectCarModel('McLaren P1')"
+                    class="btn-luxury rounded-2xl p-2.5 sm:p-3.5 text-left flex flex-col justify-between group">
+                    <div class="flex items-center justify-between w-full mb-1">
+                        <span class="text-[10px] font-tech font-bold uppercase tracking-widest text-zinc-400">UK • TWIN-TURBO</span>
+                        <i class="fa-solid fa-circle-check text-[#e53847] text-xs opacity-0 transition-opacity" id="check-p1"></i>
+                    </div>
+                    <div class="font-display font-bold text-xs sm:text-base text-white truncate">
+                        McLaren P1
+                    </div>
+                    <div class="text-[10px] sm:text-xs font-tech text-zinc-400 mt-0.5 flex items-center justify-between">
+                        <span>916 CV</span>
+                        <span class="text-zinc-300">RWD</span>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Open Lobby / Race Setup Modal Button -->
+            <button onclick="openModal('lobby-modal')"
+                class="btn-crimson-cta rounded-2xl px-6 py-3.5 sm:px-8 sm:py-4 flex items-center justify-center gap-3 font-display font-extrabold text-sm sm:text-base tracking-wider text-white shrink-0">
+                <span>SALA DE CARRERA</span>
+                <i class="fa-solid fa-flag-checkered text-base sm:text-lg"></i>
+            </button>
+        </footer>
+    </div>
+
+    <!-- ==========================================
+         MODAL 1: MENÚ DE CONFIGURACIÓN (gameConfig)
+         ========================================== -->
+    <div id="settings-modal" class="modal-backdrop modal-hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="modal-content glass-panel-crimson rounded-3xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 sm:p-6 text-white">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between border-b border-white/10 pb-4 mb-5">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-[#e53847]/20 border border-[#e53847]/50 flex items-center justify-center">
+                        <i class="fa-solid fa-sliders text-[#e53847]"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-display font-bold text-base sm:text-lg tracking-wider">CONFIGURACIÓN DEL MOTOR</h3>
+                        <p class="text-xs text-zinc-400 font-tech">Sincronizado en tiempo real con <code class="text-[#ff7582]">gameConfig</code></p>
+                    </div>
+                </div>
+                <button onclick="closeModal('settings-modal')" class="w-9 h-9 rounded-xl btn-luxury flex items-center justify-center text-zinc-300 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="space-y-5">
+                <!-- 1. Calidad Gráfica -->
+                <div>
+                    <label class="block text-xs font-tech font-bold uppercase tracking-widest text-zinc-300 mb-2">
+                        <i class="fa-solid fa-microchip text-[#e53847] mr-1.5"></i>Calidad Gráfica (DPR máx. 1.5x)
+                    </label>
+                    <div class="grid grid-cols-3 gap-2.5">
+                        <button onclick="updateConfig('graphicsQuality', 'Baja')" id="gfx-Baja"
+                            class="btn-luxury py-2.5 px-3 rounded-xl font-tech font-bold text-xs sm:text-sm uppercase tracking-wider">
+                            Baja
+                        </button>
+                        <button onclick="updateConfig('graphicsQuality', 'Media')" id="gfx-Media"
+                            class="btn-luxury py-2.5 px-3 rounded-xl font-tech font-bold text-xs sm:text-sm uppercase tracking-wider">
+                            Media
+                        </button>
+                        <button onclick="updateConfig('graphicsQuality', 'Ultra RTX')" id="gfx-Ultra RTX"
+                            class="btn-luxury active py-2.5 px-3 rounded-xl font-tech font-bold text-xs sm:text-sm uppercase tracking-wider">
+                            Ultra RTX
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Esquema de Controles -->
+                <div>
+                    <label class="block text-xs font-tech font-bold uppercase tracking-widest text-zinc-300 mb-2">
+                        <i class="fa-solid fa-gamepad text-[#e53847] mr-1.5"></i>Sistema de Control Móvil
+                    </label>
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <button onclick="updateConfig('controlType', 'Táctil')" id="ctrl-Táctil"
+                            class="btn-luxury active py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-tech font-bold text-xs sm:text-sm uppercase tracking-wider">
+                            <i class="fa-solid fa-hand-pointer text-[#e53847]"></i>
+                            <span>Pantalla Táctil</span>
+                        </button>
+                        <button onclick="updateConfig('controlType', 'Giroscopio')" id="ctrl-Giroscopio"
+                            class="btn-luxury py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-tech font-bold text-xs sm:text-sm uppercase tracking-wider">
+                            <i class="fa-solid fa-mobile-screen-button text-[#e53847]"></i>
+                            <span>Giroscopio (Tilt)</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3. Barra de Sensibilidad -->
+                <div class="bg-black/35 border border-white/10 rounded-2xl p-3.5">
+                    <div class="flex items-center justify-between mb-2">
+                        <label for="sensitivity-slider" class="text-xs font-tech font-bold uppercase tracking-widest text-zinc-300">
+                            <i class="fa-solid fa-gauge-Simple-high text-[#e53847] mr-1.5"></i>Sensibilidad de Dirección
+                        </label>
+                        <span id="sensitivity-value-label" class="font-display font-bold text-xs sm:text-sm text-[#ff7582]">
+                            65%
+                        </span>
+                    </div>
+                    <input id="sensitivity-slider" type="range" min="10" max="100" value="65"
+                        class="luxury-slider" oninput="updateConfig('sensitivity', parseInt(this.value))">
+                    <div class="flex justify-between text-[10px] font-tech text-zinc-500 mt-1">
+                        <span>Suave (10%)</span>
+                        <span>Estándar (50%)</span>
+                        <span>Reactivo (100%)</span>
+                    </div>
+                </div>
+
+                <!-- 4. Iluminación Ambiental -->
+                <div>
+                    <label class="block text-xs font-tech font-bold uppercase tracking-widest text-zinc-300 mb-2">
+                        <i class="fa-solid fa-sun text-[#e53847] mr-1.5"></i>Iluminación de Pista y Showroom
+                    </label>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <button onclick="updateConfig('lightingMode', 'Ciclo Día/Tarde/Noche dinámico')" id="light-Ciclo"
+                            class="btn-luxury active py-2.5 px-3 rounded-xl font-tech font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-arrows-spin text-[#e53847]"></i>
+                            <span>Ciclo Dinámico</span>
+                        </button>
+                        <button onclick="updateConfig('lightingMode', 'Solo Día')" id="light-Día"
+                            class="btn-luxury py-2.5 px-3 rounded-xl font-tech font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-sun text-amber-400"></i>
+                            <span>Solo Día</span>
+                        </button>
+                        <button onclick="updateConfig('lightingMode', 'Solo Noche')" id="light-Noche"
+                            class="btn-luxury py-2.5 px-3 rounded-xl font-tech font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-moon text-indigo-400"></i>
+                            <span>Solo Noche</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="mt-6 pt-4 border-t border-white/10 flex items-center justify-between">
+                <span class="text-[11px] font-tech text-zinc-400">
+                    <i class="fa-solid fa-check-double text-emerald-400 mr-1"></i>Guardado en <code class="text-zinc-200">window.gameConfig</code>
+                </span>
+                <button onclick="closeModal('settings-modal')"
+                    class="btn-crimson-cta px-6 py-2.5 rounded-xl font-display font-bold text-xs tracking-wider uppercase text-white">
+                    APLICAR Y VOLVER
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         MODAL 2: LOBBY DE INICIO DE PARTIDA
+         ========================================== -->
+    <div id="lobby-modal" class="modal-backdrop modal-hidden fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+        <div class="modal-content glass-panel-crimson rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto p-5 sm:p-6 text-white">
+            <!-- Header -->
+            <div class="flex items-center justify-between border-b border-white/10 pb-3.5 mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-[#e53847]/20 border border-[#e53847]/50 flex items-center justify-center">
+                        <i class="fa-solid fa-flag-checkered text-[#e53847] text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-display font-bold text-base sm:text-xl tracking-wider">CONFIGURACIÓN DE CARRERA GP</h3>
+                        <p class="text-xs text-zinc-400 font-tech uppercase tracking-widest">
+                            Vehículo seleccionado: <span id="lobby-selected-car" class="text-[#ff7582] font-bold">Ferrari SF90</span>
+                        </p>
+                    </div>
+                </div>
+                <button onclick="closeModal('lobby-modal')" class="w-9 h-9 rounded-xl btn-luxury flex items-center justify-center text-zinc-300 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="space-y-5">
+                <!-- 1. Selección de Pista Real de F1 -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-xs font-tech font-bold uppercase tracking-widest text-zinc-300">
+                            <i class="fa-solid fa-road text-[#e53847] mr-1.5"></i>Circuito Oficial FIA F1
+                        </label>
+                        <span id="track-info-badge" class="text-xs font-tech text-[#ff7582] font-semibold">
+                            5.79 km • 11 Curvas • Templo de la Velocidad
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <!-- Monza -->
+                        <button onclick="updateConfig('track', 'Monza')" id="track-Monza"
+                            class="btn-luxury active rounded-2xl p-3 text-left flex flex-col justify-between">
+                            <div class="flex items-center justify-between text-[10px] font-tech text-zinc-400 mb-1">
+                                <span>ITALIA</span>
+                                <span class="text-[#e53847] font-bold">RÁPIDA</span>
+                            </div>
+                            <svg class="w-full h-10 stroke-[#e53847] fill-none my-1" viewBox="0 0 100 50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12,38 L78,38 C88,38 88,18 76,16 L32,16 L24,24 L12,24 Z" />
+                            </svg>
+                            <div class="font-display font-bold text-xs sm:text-sm text-white mt-1">Monza</div>
+                        </button>
+
+                        <!-- Mónaco -->
+                        <button onclick="updateConfig('track', 'Mónaco')" id="track-Mónaco"
+                            class="btn-luxury rounded-2xl p-3 text-left flex flex-col justify-between">
+                            <div class="flex items-center justify-between text-[10px] font-tech text-zinc-400 mb-1">
+                                <span>MONTECARLO</span>
+                                <span class="text-amber-400 font-bold">TÉCNICA</span>
+                            </div>
+                            <svg class="w-full h-10 stroke-zinc-300 fill-none my-1" viewBox="0 0 100 50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M15,40 L45,42 L60,30 L85,32 L80,14 L50,18 L35,10 L18,24 Z" />
+                            </svg>
+                            <div class="font-display font-bold text-xs sm:text-sm text-white mt-1">Mónaco</div>
+                        </button>
+
+                        <!-- Spa -->
+                        <button onclick="updateConfig('track', 'Spa')" id="track-Spa"
+                            class="btn-luxury rounded-2xl p-3 text-left flex flex-col justify-between">
+                            <div class="flex items-center justify-between text-[10px] font-tech text-zinc-400 mb-1">
+                                <span>BÉLGICA</span>
+                                <span class="text-emerald-400 font-bold">MIXTA</span>
+                            </div>
+                            <svg class="w-full h-10 stroke-zinc-300 fill-none my-1" viewBox="0 0 100 50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12,35 L35,12 L82,15 L86,32 L58,28 L45,40 L18,42 Z" />
+                            </svg>
+                            <div class="font-display font-bold text-xs sm:text-sm text-white mt-1">Spa</div>
+                        </button>
+
+                        <!-- Silverstone -->
+                        <button onclick="updateConfig('track', 'Silverstone')" id="track-Silverstone"
+                            class="btn-luxury rounded-2xl p-3 text-left flex flex-col justify-between">
+                            <div class="flex items-center justify-between text-[10px] font-tech text-zinc-400 mb-1">
+                                <span>REINO UNIDO</span>
+                                <span class="text-sky-400 font-bold">FLUIDA</span>
+                            </div>
+                            <svg class="w-full h-10 stroke-zinc-300 fill-none my-1" viewBox="0 0 100 50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20,38 L70,40 L85,25 L68,10 L40,14 L25,8 L14,24 Z" />
+                            </svg>
+                            <div class="font-display font-bold text-xs sm:text-sm text-white mt-1">Silverstone</div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Modo de Juego -->
+                <div>
+                    <label class="block text-xs font-tech font-bold uppercase tracking-widest text-zinc-300 mb-2">
+                        <i class="fa-solid fa-trophy text-[#e53847] mr-1.5"></i>Modo de Juego
+                    </label>
+                    <div class="grid grid-cols-3 gap-2.5">
+                        <button onclick="updateConfig('gameMode', 'Carrera Rápida')" id="mode-Carrera Rápida"
+                            class="btn-luxury active py-2.5 px-3 rounded-xl font-tech font-bold text-xs sm:text-sm uppercase tracking-wider">
+                            Carrera Rápida
+                        </button>
+                        <button onclick="updateConfig('gameMode', 'Campeonato GP')" id="mode-Campeonato GP"
+                            class="btn-luxury py-2.5 px-3 rounded-xl font-tech font-bold text-xs sm:text-sm uppercase tracking-wider">
+                            Campeonato GP
+                        </button>
+                        <button onclick="updateConfig('gameMode', 'Contrarreloj')" id="mode-Contrarreloj"
+                            class="btn-luxury py-2.5 px-3 rounded-xl font-tech font-bold text-xs sm:text-sm uppercase tracking-wider">
+                            Contrarreloj
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3. Cantidad de Bots (1 a 5) y Nivel de Habilidad -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Cantidad de Bots -->
+                    <div class="bg-black/35 border border-white/10 rounded-2xl p-3.5">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="text-xs font-tech font-bold uppercase tracking-widest text-zinc-300">
+                                <i class="fa-solid fa-robot text-[#e53847] mr-1.5"></i>Oponentes IA (Bots)
+                            </label>
+                            <span id="bot-count-badge" class="font-display font-bold text-xs text-[#ff7582]">3 Rivales</span>
+                        </div>
+                        <div class="grid grid-cols-5 gap-1.5">
+                            <button onclick="updateConfig('botCount', 1)" id="bots-1" class="btn-luxury py-2 rounded-lg font-display font-bold text-xs">1</button>
+                            <button onclick="updateConfig('botCount', 2)" id="bots-2" class="btn-luxury py-2 rounded-lg font-display font-bold text-xs">2</button>
+                            <button onclick="updateConfig('botCount', 3)" id="bots-3" class="btn-luxury active py-2 rounded-lg font-display font-bold text-xs">3</button>
+                            <button onclick="updateConfig('botCount', 4)" id="bots-4" class="btn-luxury py-2 rounded-lg font-display font-bold text-xs">4</button>
+                            <button onclick="updateConfig('botCount', 5)" id="bots-5" class="btn-luxury py-2 rounded-lg font-display font-bold text-xs">5</button>
+                        </div>
+                    </div>
+
+                    <!-- Nivel de Habilidad IA -->
+                    <div class="bg-black/35 border border-white/10 rounded-2xl p-3.5">
+                        <label class="block text-xs font-tech font-bold uppercase tracking-widest text-zinc-300 mb-2">
+                            <i class="fa-solid fa-brain text-[#e53847] mr-1.5"></i>Habilidad de los Bots
+                        </label>
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <button onclick="updateConfig('botSkill', 'Novato')" id="skill-Novato"
+                                class="btn-luxury py-2 px-2 rounded-lg font-tech font-bold text-xs uppercase tracking-wider">
+                                Novato
+                            </button>
+                            <button onclick="updateConfig('botSkill', 'Pro')" id="skill-Pro"
+                                class="btn-luxury active py-2 px-2 rounded-lg font-tech font-bold text-xs uppercase tracking-wider">
+                                Pro
+                            </button>
+                            <button onclick="updateConfig('botSkill', 'Leyenda')" id="skill-Leyenda"
+                                class="btn-luxury py-2 px-2 rounded-lg font-tech font-bold text-xs uppercase tracking-wider">
+                                Leyenda
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botón Principal: INICIAR CARRERA -->
+            <div class="mt-6 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="text-xs font-tech text-zinc-400">
+                    Parrilla lista: <span id="lobby-summary-text" class="text-zinc-200 font-semibold">Monza • 3 Bots (Pro) • Ciclo Dinámico</span>
+                </div>
+                <button onclick="launchRaceSequence()"
+                    class="w-full sm:w-auto btn-crimson-cta px-8 py-3.5 rounded-2xl font-display font-extrabold text-sm sm:text-base tracking-widest uppercase text-white flex items-center justify-center gap-3">
+                    <i class="fa-solid fa-play"></i>
+                    <span>INICIAR CARRERA</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         MODAL 3: CONFIRMACIÓN DE LANZAMIENTO (PUENTE A PARTE 2)
+         ========================================== -->
+    <div id="launch-modal" class="modal-backdrop modal-hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="modal-content glass-panel-crimson rounded-3xl w-full max-w-md p-6 text-center text-white">
+            <div class="w-14 h-14 rounded-2xl bg-[#e53847]/20 border border-[#e53847] flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <i class="fa-solid fa-satellite-dish text-[#e53847] text-2xl animate-pulse"></i>
+            </div>
+            <h3 class="font-display font-extrabold text-lg sm:text-xl tracking-wider text-white mb-1">
+                TELEMETRÍA LISTA PARA PISTA
+            </h3>
+            <p class="text-xs font-tech text-zinc-300 uppercase tracking-widest mb-4">
+                Estado del objeto <code class="text-[#ff7582]">window.gameConfig</code> preparado para la Parte 2
+            </p>
+
+            <pre id="config-json-preview" class="text-left text-[11px] font-mono bg-black/60 border border-white/10 rounded-2xl p-3.5 text-emerald-400 overflow-x-auto mb-5"></pre>
+
+            <button onclick="closeModal('launch-modal')"
+                class="w-full btn-crimson-cta py-3 rounded-xl font-display font-bold text-xs tracking-widest uppercase text-white">
+                VOLVER AL SHOWROOM 3D
+            </button>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         CAPA UI PARTE 2: HUD EN PISTA Y CONTROLES MÓVILES MULTITOUCH
+         ========================================== -->
+    <!-- Destello visual de impacto contra barreras -->
+    <div id="collision-overlay" class="fixed inset-0 z-20 pointer-events-none opacity-0 bg-radial from-transparent via-red-600/20 to-red-600/60 transition-opacity duration-150"></div>
+
+    <div id="race-hud-layer" class="fixed inset-0 z-30 hidden flex-col justify-between p-3 sm:p-5 pointer-events-none select-none">
+
+        <!-- BARRA SUPERIOR DE PISTA: Adaptable a Vertical (Portrait) y Horizontal (Landscape) -->
+        <div id="race-hud-top" class="w-full flex items-start justify-between gap-2 pointer-events-auto">
+            <!-- Info de Circuito y Vuelta -->
+            <div class="glass-panel rounded-2xl px-3 py-2 sm:px-3.5 sm:py-2.5 flex items-center gap-2.5 sm:gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-[#e53847] animate-ping"></span>
+                    <div>
+                        <span id="hud-track-name" class="font-display font-extrabold text-xs sm:text-sm text-white tracking-wider block">MONZA GP</span>
+                        <span id="hud-timeofday-label" class="text-[10px] font-tech uppercase tracking-widest text-amber-300 block">
+                            <i class="fa-solid fa-sun mr-1"></i>DÍA • FAROS AUTO
+                        </span>
+                    </div>
+                </div>
+                <div class="h-6 w-[1px] bg-white/10"></div>
+                <div>
+                    <span class="text-[9px] sm:text-[10px] font-tech uppercase tracking-widest text-zinc-400 block">VUELTA</span>
+                    <span id="hud-lap-counter" class="font-display font-bold text-xs sm:text-sm text-white">1 / 3</span>
+                </div>
+                <div class="h-6 w-[1px] bg-white/10"></div>
+                <div>
+                    <span class="text-[9px] sm:text-[10px] font-tech uppercase tracking-widest text-zinc-400 block">TIEMPO</span>
+                    <span id="hud-lap-timer" class="font-display font-bold text-xs sm:text-sm text-emerald-400">00:00.0</span>
+                </div>
+            </div>
+
+            <!-- Centro: Telemetría Digital de Velocidad, Marcha y RPM -->
+            <div id="race-telemetry-center" class="glass-panel-crimson rounded-2xl px-4 py-2 sm:px-6 sm:py-2.5 flex flex-col items-center min-w-[155px] sm:min-w-[220px]">
+                <!-- Barra LED de RPM -->
+                <div id="hud-rpm-leds" class="w-full flex items-center justify-between gap-1 mb-1">
+                    <span class="h-1.5 flex-1 rounded-sm bg-emerald-400 opacity-30"></span>
+                    <span class="h-1.5 flex-1 rounded-sm bg-emerald-400 opacity-30"></span>
+                    <span class="h-1.5 flex-1 rounded-sm bg-emerald-400 opacity-30"></span>
+                    <span class="h-1.5 flex-1 rounded-sm bg-amber-400 opacity-30"></span>
+                    <span class="h-1.5 flex-1 rounded-sm bg-amber-400 opacity-30"></span>
+                    <span class="h-1.5 flex-1 rounded-sm bg-amber-400 opacity-30"></span>
+                    <span class="h-1.5 flex-1 rounded-sm bg-[#e53847] opacity-30"></span>
+                    <span class="h-1.5 flex-1 rounded-sm bg-[#e53847] opacity-30"></span>
+                    <span class="h-1.5 flex-1 rounded-sm bg-fuchsia-500 opacity-30"></span>
+                </div>
+                <div class="flex items-baseline gap-3">
+                    <div class="text-center">
+                        <span class="text-[9px] font-tech text-zinc-400 uppercase block">GEAR</span>
+                        <span id="hud-gear" class="font-display font-black text-lg sm:text-2xl text-[#e53847]">1</span>
+                    </div>
+                    <div class="text-right">
+                        <span id="hud-speed" class="font-display font-black text-2xl sm:text-4xl text-white tracking-tight">000</span>
+                        <span class="text-[10px] font-tech font-bold text-zinc-400 ml-1">KM/H</span>
+                    </div>
+                </div>
+                <div class="hidden sm:flex w-full items-center justify-between text-[10px] font-tech text-zinc-400 mt-0.5">
+                    <span id="hud-aero-drag">DRAG: 0%</span>
+                    <span id="hud-drift-badge" class="text-amber-400 font-bold opacity-0 transition-opacity">¡DERRAPE!</span>
+                </div>
+            </div>
+
+            <!-- Botones de Acción Derecha: Cámara Exterior/Interior, Giroscopio y Volver al Showroom -->
+            <div class="flex items-center gap-1.5 sm:gap-2">
+                <!-- Indicador de Orientación Vertical / Horizontal -->
+                <div class="glass-panel px-2.5 py-2 sm:py-2.5 rounded-xl flex items-center gap-1.5 text-[10px] font-tech font-bold text-zinc-300">
+                    <i id="hud-orientation-icon" class="fa-solid fa-mobile-screen text-[#e53847]"></i>
+                    <span id="hud-orientation-badge" class="hidden md:inline">VERTICAL / HORIZONTAL</span>
+                </div>
+
+                <!-- Botón Alternar Cámara Exterior / Interior (Cabina) -->
+                <button id="btn-race-camera" onclick="toggleRaceCameraMode()"
+                    class="btn-luxury active px-3 py-2 sm:px-4 sm:py-3 rounded-2xl flex items-center gap-1.5 text-xs sm:text-sm font-tech font-bold tracking-wider text-white shadow-lg">
+                    <i id="race-cam-icon" class="fa-solid fa-car-side text-[#e53847]"></i>
+                    <span id="race-cam-label">EXTERIOR</span>
+                </button>
+
+                <!-- Botón Permiso / Calibrar Giroscopio (visible en modo Giroscopio) -->
+                <button id="btn-gyro-calibrate" onclick="requestAndCalibrateGyroscope()"
+                    class="hidden btn-luxury px-2.5 py-2 sm:px-3.5 sm:py-3 rounded-2xl items-center gap-1.5 text-xs font-tech font-bold text-amber-300 border-amber-400/40">
+                    <i class="fa-solid fa-compass"></i>
+                    <span class="hidden md:inline">CALIBRAR</span>
+                </button>
+
+                <!-- Botón Salir al Showroom -->
+                <button onclick="exitRaceToShowroom()" title="Volver al Showroom"
+                    class="btn-luxury px-2.5 py-2 sm:px-3.5 sm:py-3 rounded-2xl flex items-center gap-1.5 text-xs font-tech font-bold text-zinc-300 hover:text-white">
+                    <i class="fa-solid fa-door-open text-[#e53847]"></i>
+                    <span class="hidden md:inline">MENÚ</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- INDICADOR CENTRAL DE GIROSCOPIO (Cuando está activo el modo Tilt) -->
+        <div id="gyro-hud-indicator" class="hidden self-center glass-panel px-4 py-1.5 rounded-full items-center gap-3 text-xs font-tech text-zinc-200">
+            <i class="fa-solid fa-mobile-screen-button text-[#e53847]"></i>
+            <span>GIRO ACTIVO</span>
+            <div class="w-24 h-2 bg-white/10 rounded-full overflow-hidden relative">
+                <div id="gyro-tilt-bar" class="w-3 h-full bg-[#e53847] rounded-full absolute left-1/2 -translate-x-1/2 transition-all duration-75"></div>
+            </div>
+        </div>
+
+        <!-- CONTROLES INFERIORES EN PANTALLA: Dirección (Izquierda) + Pedales Multitouch (Derecha) -->
+        <div id="race-controls-bottom" class="w-full flex items-end justify-between gap-2 sm:gap-4 pb-1 sm:pb-2 pointer-events-auto">
+
+            <!-- Panel Izquierdo: Botones de Dirección Táctil (se oculta si se eligió Giroscopio) -->
+            <div id="touch-steering-group" class="flex items-center gap-2.5 sm:gap-4">
+                <button id="btn-steer-left"
+                    class="pedal-touch steer-btn-portrait glass-panel w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-white text-2xl sm:text-3xl active:scale-95 shadow-2xl border border-white/15">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <button id="btn-steer-right"
+                    class="pedal-touch steer-btn-portrait glass-panel w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-white text-2xl sm:text-3xl active:scale-95 shadow-2xl border border-white/15">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+
+            <!-- Panel alternativo cuando está activo el Giroscopio -->
+            <div id="gyro-status-box" class="hidden glass-panel rounded-2xl px-3 py-2 text-xs font-tech text-zinc-300">
+                <div class="flex items-center gap-2 text-[#ff7582] font-bold">
+                    <i class="fa-solid fa-satellite"></i>
+                    <span id="gyro-status-text">GIROSCOPIO ACTIVO</span>
+                </div>
+                <span class="text-[10px] text-zinc-400 block">Sensibilidad: <strong id="gyro-sens-display">65%</strong></span>
+            </div>
+
+            <!-- Panel Derecho: Pedales Táctiles Multitouch (Freno y Acelerador) -->
+            <div class="flex items-end gap-2.5 sm:gap-4">
+                <!-- Pedal de Freno / Reversa -->
+                <button id="btn-pedal-brake"
+                    class="pedal-touch pedal-btn-portrait glass-panel w-16 h-20 sm:w-20 sm:h-24 rounded-2xl flex flex-col items-center justify-between p-2.5 border border-[#e53847]/40 shadow-2xl">
+                    <span class="text-[9px] sm:text-[10px] font-tech font-bold uppercase tracking-widest text-[#ff7582]">FRENO</span>
+                    <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#e53847]/20 flex items-center justify-center">
+                        <i class="fa-solid fa-angles-down text-[#e53847] text-base sm:text-lg"></i>
+                    </div>
+                    <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                        <div id="brake-pressure-bar" class="h-full bg-[#e53847] w-0 transition-all duration-75"></div>
+                    </div>
+                </button>
+
+                <!-- Pedal de Acelerador -->
+                <button id="btn-pedal-gas"
+                    class="pedal-touch pedal-gas gas-btn-portrait glass-panel w-20 h-28 sm:w-24 sm:h-32 rounded-2xl flex flex-col items-center justify-between p-2.5 sm:p-3 border border-emerald-400/40 shadow-2xl">
+                    <span class="text-[9px] sm:text-[10px] font-tech font-bold uppercase tracking-widest text-emerald-300">GAS</span>
+                    <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                        <i class="fa-solid fa-bolt text-emerald-400 text-lg sm:text-xl"></i>
+                    </div>
+                    <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div id="gas-pressure-bar" class="h-full bg-emerald-400 w-0 transition-all duration-75"></div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * OBJETO GLOBAL DE CONFIGURACIÓN DEL SIMULADOR (`gameConfig`)
+         * Almacena toda la configuración del vehículo, gráficos, controles y lobby
+         * listo para conectarse con el motor de pista en las Partes 2 y 3.
+         */
+        window.gameConfig = {
+            selectedCar: 'Ferrari SF90',
+            paintKey: 'rojo_corsa',
+            paintName: 'Rojo Corsa',
+            paintHex: 0xd91424,
+            graphicsQuality: 'Ultra RTX',
+            maxPixelRatio: 1.5,
+            controlType: 'Táctil',
+            sensitivity: 65,
+            lightingMode: 'Ciclo Día/Tarde/Noche dinámico',
+            track: 'Monza',
+            gameMode: 'Carrera Rápida',
+            botCount: 3,
+            botSkill: 'Pro'
+        };
+
+        // Base de datos de especificaciones y geometría procedural por hiperauto
+        const HYPERCAR_SPECS = {
+            'Ferrari SF90': {
+                brand: 'SCUDERIA ITALIA • V8 PHEV',
+                rating: 'S+ 998',
+                hp: '1000 CV',
+                accel: '2.5 s',
+                topSpeed: '340 km/h',
+                bars: { speed: 96, accel: 98, aero: 92 },
+                dimensions: { length: 4.70, width: 2.02, cabinZ: -0.15, noseDroop: 0.22 }
+            },
+            'Lamborghini Revuelto': {
+                brand: 'SANT’AGATA • V12 HPEV',
+                rating: 'S+ 999',
+                hp: '1015 CV',
+                accel: '2.5 s',
+                topSpeed: '350 km/h',
+                bars: { speed: 99, accel: 97, aero: 95 },
+                dimensions: { length: 4.92, width: 2.12, cabinZ: -0.05, noseDroop: 0.16 }
+            },
+            'McLaren P1': {
+                brand: 'WOKING UK • TWIN-TURBO HYBRID',
+                rating: 'S+ 995',
+                hp: '916 CV',
+                accel: '2.8 s',
+                topSpeed: '350 km/h',
+                bars: { speed: 98, accel: 94, aero: 99 },
+                dimensions: { length: 4.58, width: 1.96, cabinZ: -0.22, noseDroop: 0.25 }
+            }
+        };
+
+        // Base de datos de pinturas con propiedades físicas MeshPhysicalMaterial
+        const PAINT_PALETTE = {
+            'rojo_corsa': {
+                name: 'Rojo Corsa',
+                color: 0xd91424,
+                metalness: 0.95,
+                roughness: 0.12,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.03
+            },
+            'platino_cromo': {
+                name: 'Platino Cromo',
+                color: 0xd8e0e8,
+                metalness: 0.95,
+                roughness: 0.12,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.03
+            },
+            'negro_mate': {
+                name: 'Negro Mate',
+                color: 0x16171b,
+                metalness: 0.85,
+                roughness: 0.28,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.18
+            },
+            'amarillo': {
+                name: 'Amarillo Modena',
+                color: 0xf5b800,
+                metalness: 0.95,
+                roughness: 0.12,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.03
+            }
+        };
+
+        // Metadatos de las pistas de F1
+        const TRACK_METADATA = {
+            'Monza': '5.79 km • 11 Curvas • Templo de la Velocidad',
+            'Mónaco': '3.33 km • 19 Curvas • Circuito Urbano de Montecarlo',
+            'Spa': '7.00 km • 19 Curvas • Eau Rouge & Raidillon',
+            'Silverstone': '5.89 km • 18 Curvas • Maggotts & Becketts'
+        };
+
+        // Variables globales de Three.js
+        let scene, camera, renderer, pmremGenerator, envMapTexture;
+        let carRootGroup, currentCarMeshGroup;
+        let bodyPhysicalMaterial, carbonMaterial, glassMaterial, rimMaterial, headLightMaterial, tailLightMaterial, caliperMaterial;
+        let wheelGroups = [];
+        let activeSpoilerMesh = null;
+        let studioRingMesh, studioFloorMesh, headLightBeams = [];
+        let studioLights = {};
+
+        // Variables de interacción y animación
+        let isDragging = false;
+        let previousPointerX = 0;
+        let previousPointerY = 0;
+        let targetRotationY = 0.65;
+        let currentRotationY = 0.65;
+        let autoRotateSpeed = 0.0035;
+        let lastInteractionTime = 0;
+        let carLightsOn = true;
+        let aeroDeployed = false;
+        let cameraPresetIndex = 0;
+        const CAMERA_PRESETS = [
+            { name: 'ORBITAL', pos: { x: 0, y: 1.75, z: 5.7 }, lookY: 0.45 },
+            { name: 'FRONTAL', pos: { x: 0, y: 1.05, z: 4.5 }, lookY: 0.4 },
+            { name: 'PERFIL', pos: { x: 5.5, y: 1.15, z: 0.1 }, lookY: 0.45 },
+            { name: 'TRASERA', pos: { x: 0, y: 1.45, z: -5.2 }, lookY: 0.5 }
+        ];
+        let currentCamPos = new THREE.Vector3(0, 1.75, 5.7);
+        let targetCamPos = new THREE.Vector3(0, 1.75, 5.7);
+
+        // ============================================================================
+        // VARIABLES GLOBALES DE LA PARTE 2: PISTA F1, CLIMA, CABINA Y FÍSICAS
+        // ============================================================================
+        let isRacingMode = false;
+        let raceCameraView = 'EXTERIOR'; // 'EXTERIOR' | 'INTERIOR'
+        let showroomStageGroup = null;
+        let raceWorldGroup = null;
+        let trackCurve = null;
+        let trackPoints = [];
+        let trackHalfWidth = 9.0;
+        let trackLengthMeters = 1000;
+
+        // Cabina 3D y Tablero Digital en Tiempo Real
+        let cockpitGroup = null;
+        let steeringWheelMesh = null;
+        let dashCanvas = null;
+        let dashCtx = null;
+        let dashTexture = null;
+
+        // Cielo, Nubes, Partículas de Viento y Luces de Faros en Pista
+        let skyDomeMesh = null;
+        let cloudsGroup = null;
+        let windParticles = null;
+        let windGeometry = null;
+        let carSpotLightLeft = null;
+        let carSpotLightRight = null;
+        let dayNightCycleTime = 0.22; // 0 = Amanecer, 0.25 = Mediodía, 0.52 = Atardecer, 0.78 = Noche
+
+        // Estado Físico Realista del Vehículo en Pista
+        const carPhysics = {
+            position: new THREE.Vector3(0, 0.08, 0),
+            velocity: new THREE.Vector3(0, 0, 0),
+            speedMS: 0,               // Velocidad longitudinal en m/s
+            speedKmh: 0,              // Velocidad en km/h
+            heading: 0,               // Ángulo Yaw del auto
+            angularVelocity: 0,       // Velocidad angular de giro/derrape
+            steerAngle: 0,            // Ángulo actual de las ruedas delanteras / volante (-1 a 1)
+            targetSteer: 0,           // Entrada deseada del jugador
+            pitchAngle: 0,            // Transferencia de peso longitudinal (aceleración/frenada)
+            rollAngle: 0,             // Transferencia de peso lateral en curvas
+            rpm: 1100,
+            gear: 1,
+            driftSlip: 0,
+            lapCount: 1,
+            lapStartTime: 0,
+            lastTrackIndex: 0,
+            passedHalfway: false
+        };
+
+        // Estado de Controles Multitouch, Teclado y Giroscopio
+        const controlState = {
+            throttle: 0,
+            brake: 0,
+            left: false,
+            right: false,
+            gyroActive: false,
+            gyroPermissionGranted: false,
+            gyroRawSteer: 0,
+            gyroCalibrationOffset: 0
+        };
+
+        /**
+         * Inicializa la escena 3D del Showroom con límite estricto de devicePixelRatio <= 1.5
+         */
+        function initShowroom3D() {
+            const canvas = document.getElementById('showroom-canvas');
+
+            // 1. Escena y Niebla de Estudio
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x07070a);
+            scene.fog = new THREE.FogExp2(0x07070a, 0.045);
+
+            // 2. Cámara Perspectiva
+            camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.copy(currentCamPos);
+
+            // 3. Renderizador optimizado para móviles (devicePixelRatio limitado a máximo 1.5)
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: true,
+                powerPreference: 'high-performance'
+            });
+            const safePixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+            renderer.setPixelRatio(safePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            renderer.outputEncoding = THREE.sRGBEncoding; // r128: equivalente a SRGBColorSpace
+            if (THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace; // three >= r152
+
+            document.getElementById('hud-dpr-badge').textContent = `DPR ${safePixelRatio.toFixed(1)}x`;
+
+            // 4. Generar Mapa de Entorno Procedural tipo Estudio RTX (PMREM)
+            createStudioEnvironmentMap();
+
+            // 5. Inicializar Materiales compartidos tipo RTX
+            initMaterials();
+
+            // 5b. Bloom sutil + corrección de color (EffectComposer)
+            setupPostProcessing();
+
+            // 6. Construir Iluminación y Escenario del Showroom
+            buildStudioStage();
+
+            // 7. Construir el Hiperauto inicial (Ferrari SF90)
+            carRootGroup = new THREE.Group();
+            scene.add(carRootGroup);
+            buildProceduralHypercar(window.gameConfig.selectedCar);
+
+            // 8. Eventos de Interacción (Mouse + Touch) y Resize
+            setupInteractionListeners(canvas);
+            setupRaceControlListeners();
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('orientationchange', () => {
+                setTimeout(onWindowResize, 120);
+            });
+            updateViewportAndCameraFov();
+        }
+
+        /**
+         * Entorno HDR procedural (atardecer + softboxes de estudio) procesado con PMREMGenerator.
+         * Se genera UNA sola vez al iniciar: en ejecución solo se muestrea el cubemap (coste mínimo en móvil).
+         */
+        function createStudioEnvironmentMap() {
+            pmremGenerator = new THREE.PMREMGenerator(renderer);
+            pmremGenerator.compileCubemapShader();
+
+            const envScene = new THREE.Scene();
+
+            // Cúpula de cielo: gradiente HDR por vértice (horizonte cálido -> cenit azul profundo)
+            const R = 40;
+            const skyGeo = new THREE.SphereGeometry(R, 32, 16);
+            const pos = skyGeo.attributes.position;
+            const cols = new Float32Array(pos.count * 3);
+            const zenith = new THREE.Color(0.05, 0.10, 0.28);
+            const mid = new THREE.Color(0.55, 0.30, 0.45);
+            const horizon = new THREE.Color(1.7, 0.85, 0.42);
+            const ground = new THREE.Color(0.06, 0.055, 0.06);
+            const tmp = new THREE.Color();
+            for (let i = 0; i < pos.count; i++) {
+                const h = pos.getY(i) / R;
+                if (h < 0) tmp.copy(horizon).lerp(ground, Math.min(1, -h * 3.0));
+                else if (h < 0.35) tmp.copy(horizon).lerp(mid, h / 0.35);
+                else tmp.copy(mid).lerp(zenith, Math.min(1, (h - 0.35) / 0.65));
+                cols[i * 3] = tmp.r; cols[i * 3 + 1] = tmp.g; cols[i * 3 + 2] = tmp.b;
+            }
+            skyGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+            envScene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+
+            // Sol bajo (valores > 1: HDR real, genera el destello sobre el platinado)
+            const sun = new THREE.Mesh(new THREE.SphereGeometry(2.4, 16, 12),
+                new THREE.MeshBasicMaterial({ color: new THREE.Color(10, 7, 4) }));
+            sun.position.set(-18, 7, -26);
+            envScene.add(sun);
+
+            // Softboxes de estudio (intensidad HDR) que dibujan las líneas de luz en la carrocería
+            const addBox = (w, h, r, g, b2, x, y, z) => {
+                const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+                    new THREE.MeshBasicMaterial({ color: new THREE.Color(r, g, b2), side: THREE.DoubleSide }));
+                m.position.set(x, y, z);
+                m.lookAt(0, 0, 0);
+                envScene.add(m);
+            };
+            addBox(16, 3.2, 6, 6, 6.5, 0, 15, 2);        // superior (key)
+            addBox(3.2, 9, 3.2, 4.2, 6.5, -17, 6, 6);    // lateral frío
+            addBox(3.2, 9, 6.5, 2.2, 1.8, 17, 6, 4);     // lateral cálido/rojizo
+            addBox(12, 2, 3, 3, 3.4, 0, 5, 20);          // contraluz frontal
+
+            envMapTexture = pmremGenerator.fromScene(envScene, 0.03).texture;
+            scene.environment = envMapTexture;
+
+            // Liberar recursos temporales del entorno
+            envScene.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+        }
+
+        /**
+         * Iridiscencia de pintura. three r128 no trae `iridescence` nativo (llegó en r141+),
+         * así que se emula con un desplazamiento de tono dependiente del ángulo de visión (película delgada).
+         */
+        function applyIridescence(mat, amount) {
+            const hasNative = ('iridescence' in new THREE.MeshPhysicalMaterial());
+            mat.iridescence = amount;
+            if (hasNative) return;
+            const u = { value: amount };
+            mat.userData.iriUniform = u;
+            mat.onBeforeCompile = (shader) => {
+                shader.uniforms.uIridescence = u;
+                shader.fragmentShader = 'uniform float uIridescence;\n' + shader.fragmentShader.replace(
+                    '#include <tonemapping_fragment>',
+                    `float iriF = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.5);
+                     vec3 iriC = 0.5 + 0.5 * cos(6.2831853 * (vec3(0.0, 0.33, 0.67) + iriF * 1.4));
+                     gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * (0.6 + 0.8 * iriC), clamp(uIridescence * iriF * 2.0, 0.0, 1.0));
+                     #include <tonemapping_fragment>`);
+            };
+            mat.customProgramCacheKey = () => 'carpaint-iridescence';
+        }
+
+        // ---------- Post-procesamiento ligero: Bloom + corrección de color ----------
+        let composer = null, bloomPass = null, fxEnabled = true;
+        const fxPerf = { t: 0, n: 0, warm: true };
+
+        // Último pase: gamma sRGB + saturación/contraste + viñeta suave (1 solo pase para ahorrar fill-rate)
+        const ColorGradeShader = {
+            uniforms: { tDiffuse: { value: null }, uSat: { value: 1.08 }, uContrast: { value: 1.05 }, uVignette: { value: 0.28 } },
+            vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+            fragmentShader: `uniform sampler2D tDiffuse; uniform float uSat; uniform float uContrast; uniform float uVignette; varying vec2 vUv;
+                void main() {
+                    vec4 c = texture2D(tDiffuse, vUv);
+                    vec3 rgb = clamp(c.rgb, 0.0, 1.0);
+                    rgb = mix(rgb * 12.92, 1.055 * pow(rgb, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), rgb));
+                    float l = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+                    rgb = mix(vec3(l), rgb, uSat);
+                    rgb = (rgb - 0.5) * uContrast + 0.5;
+                    rgb *= 1.0 - uVignette * smoothstep(0.35, 0.85, distance(vUv, vec2(0.5)));
+                    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), c.a);
+                }`
+        };
+
+        function setupPostProcessing() {
+            // Si los scripts del CDN no cargaron, el juego sigue con render directo
+            if (!THREE.EffectComposer || !THREE.RenderPass || !THREE.UnrealBloomPass || !THREE.ShaderPass) { fxEnabled = false; return; }
+            const dpr = renderer.getPixelRatio();
+            const w = window.innerWidth, h = window.innerHeight;
+            let target;
+            if (renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget) {
+                target = new THREE.WebGLMultisampleRenderTarget(w * dpr, h * dpr, { format: THREE.RGBAFormat });
+                target.samples = 2; // MSAA 2x: bordes limpios con coste bajo en móvil
+            }
+            composer = new THREE.EffectComposer(renderer, target);
+            composer.setPixelRatio(dpr);
+            composer.setSize(w, h);
+            composer.addPass(new THREE.RenderPass(scene, camera));
+            // (resolución, strength, radius, threshold)
+            bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(w * 0.5, h * 0.5), 0.3, 0.4, 0.8);
+            composer.addPass(bloomPass);
+            composer.addPass(new THREE.ShaderPass(ColorGradeShader));
+        }
+
+        function applyFxQuality(level, dpr) {
+            fxEnabled = !!composer && level !== 'Baja';
+            fxPerf.t = 0; fxPerf.n = 0; fxPerf.warm = true;
+            if (composer) composer.setPixelRatio(dpr);
+            if (bloomPass) bloomPass.strength = (level === 'Ultra RTX') ? 0.3 : 0.22;
+        }
+
+        // Render central + auto-degradación: si el FPS medio baja de ~28 se apaga el bloom
+        function renderFrame(dt) {
+            if (fxEnabled && composer) composer.render(dt); else renderer.render(scene, camera);
+            if (!fxEnabled || !composer) return;
+            fxPerf.t += dt; fxPerf.n++;
+            if (fxPerf.t >= 3) {
+                const fps = fxPerf.n / fxPerf.t;
+                if (fxPerf.warm) fxPerf.warm = false; // primera ventana = calentamiento (compilación de shaders)
+                else if (fps < 28) {
+                    fxEnabled = false;
+                    const badge = document.getElementById('hud-quality-badge');
+                    if (badge) badge.textContent += ' · FX OFF';
+                }
+                fxPerf.t = 0; fxPerf.n = 0;
+            }
+        }
+
+        /**
+         * Inicializa el material principal requerido (`MeshPhysicalMaterial` con
+         * clearcoat: 1.0, metalness: 0.9, roughness: 0.15) y los materiales secundarios.
+         */
+        function initMaterials() {
+            const initialPaint = PAINT_PALETTE[window.gameConfig.paintKey];
+
+            // Material Principal del Chasis: MeshPhysicalMaterial con los parámetros solicitados
+            bodyPhysicalMaterial = new THREE.MeshPhysicalMaterial({
+                color: initialPaint.color,
+                metalness: 0.95,
+                roughness: 0.12,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.03,
+                transmission: 0.0,      // opaco reflectante
+                envMap: envMapTexture,
+                envMapIntensity: 1.55
+            });
+            applyIridescence(bodyPhysicalMaterial, 0.3); // reflejos tornasolados sutiles
+
+            // Fibra de Carbono Satinada (Splitters, difusor, faldones)
+            carbonMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0x121318,
+                metalness: 0.75,
+                roughness: 0.32,
+                clearcoat: 0.6,
+                clearcoatRoughness: 0.2,
+                envMap: envMapTexture
+            });
+
+            // Cúpula de Cristal Ahumado
+            glassMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0x08090c,
+                metalness: 0.95,
+                roughness: 0.05,
+                clearcoat: 1.0,
+                envMap: envMapTexture,
+                envMapIntensity: 1.8
+            });
+
+            // Rines de Aleación Forjada Oscura/Titanio
+            rimMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0x8f96a3,
+                metalness: 0.92,
+                roughness: 0.18,
+                clearcoat: 0.8,
+                envMap: envMapTexture
+            });
+
+            // Pinzas de Freno Rojas Brembo
+            caliperMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0xe53847,
+                metalness: 0.7,
+                roughness: 0.2,
+                clearcoat: 1.0
+            });
+
+            // Faros Delanteros LED Blanco Frío
+            headLightMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                emissive: 0xdff4ff,
+                emissiveIntensity: 3.0,
+                roughness: 0.1
+            });
+
+            // Luces Traseras LED Carmesí
+            tailLightMaterial = new THREE.MeshStandardMaterial({
+                color: 0xff2a3c,
+                emissive: 0xe5192b,
+                emissiveIntensity: 3.2,
+                roughness: 0.15
+            });
+        }
+
+        /**
+         * Construye la plataforma circular del Showroom, anillos de neón y luces de estudio.
+         */
+        function buildStudioStage() {
+            showroomStageGroup = new THREE.Group();
+            scene.add(showroomStageGroup);
+
+            // Suelo reflectante oscuro
+            const floorGeo = new THREE.CircleGeometry(18, 64);
+            const floorMat = new THREE.MeshStandardMaterial({
+                color: 0x09090d,
+                metalness: 0.8,
+                roughness: 0.22,
+                envMap: envMapTexture
+            });
+            studioFloorMesh = new THREE.Mesh(floorGeo, floorMat);
+            studioFloorMesh.rotation.x = -Math.PI / 2;
+            studioFloorMesh.position.y = 0;
+            showroomStageGroup.add(studioFloorMesh);
+
+            // Plataforma central bajo el auto
+            const podiumGeo = new THREE.CylinderGeometry(2.85, 3.05, 0.08, 64);
+            const podiumMat = new THREE.MeshPhysicalMaterial({
+                color: 0x101016,
+                metalness: 0.85,
+                roughness: 0.18,
+                clearcoat: 0.8
+            });
+            const podium = new THREE.Mesh(podiumGeo, podiumMat);
+            podium.position.y = 0.04;
+            showroomStageGroup.add(podium);
+
+            // Anillo LED rojo suave alrededor de la plataforma
+            const ringGeo = new THREE.RingGeometry(2.86, 2.93, 64);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: 0xe53847,
+                side: THREE.DoubleSide
+            });
+            studioRingMesh = new THREE.Mesh(ringGeo, ringMat);
+            studioRingMesh.rotation.x = -Math.PI / 2;
+            studioRingMesh.position.y = 0.082;
+            showroomStageGroup.add(studioRingMesh);
+
+            // Halo superior de estudio
+            const overheadHaloGeo = new THREE.TorusGeometry(3.1, 0.035, 16, 64);
+            const overheadHaloMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const overheadHalo = new THREE.Mesh(overheadHaloGeo, overheadHaloMat);
+            overheadHalo.rotation.x = Math.PI / 2;
+            overheadHalo.position.y = 3.2;
+            showroomStageGroup.add(overheadHalo);
+
+            // Iluminación de estudio
+            studioLights.ambient = new THREE.AmbientLight(0xffffff, 0.55);
+            scene.add(studioLights.ambient);
+
+            studioLights.keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+            studioLights.keyLight.position.set(4, 7, 5);
+            scene.add(studioLights.keyLight);
+
+            studioLights.rimLightRed = new THREE.PointLight(0xe53847, 2.6, 12);
+            studioLights.rimLightRed.position.set(-4.2, 2.0, -3.5);
+            showroomStageGroup.add(studioLights.rimLightRed);
+
+            studioLights.fillLightCool = new THREE.PointLight(0x88b4ff, 1.8, 12);
+            studioLights.fillLightCool.position.set(4.2, 1.8, -2.5);
+            showroomStageGroup.add(studioLights.fillLightCool);
+        }
+
+        /**
+         * Construye y transforma la geometría procedural del hiperauto en tiempo real
+         * según el modelo elegido: "Ferrari SF90", "Lamborghini Revuelto" o "McLaren P1".
+         */
+        function buildProceduralHypercar(modelName) {
+            // Limpiar geometría anterior si existe
+            if (currentCarMeshGroup) {
+                carRootGroup.remove(currentCarMeshGroup);
+                currentCarMeshGroup.traverse((child) => {
+                    if (child.geometry) child.geometry.dispose();
+                });
+            }
+
+            wheelGroups = [];
+            headLightBeams = [];
+            activeSpoilerMesh = null;
+
+            const carGroup = new THREE.Group();
+            carGroup.position.y = 0.08; // Sobre el podio
+
+            // Neumático de caucho compartido
+            const tireMaterial = new THREE.MeshStandardMaterial({
+                color: 0x111215,
+                roughness: 0.78,
+                metalness: 0.15
+            });
+
+            // =========================================================
+            // GEOMETRÍA ESPECÍFICA SEGÚN EL MODELO SELECCIONADO
+            // =========================================================
+            if (modelName === 'Ferrari SF90') {
+                buildFerrariSF90Geometry(carGroup);
+            } else if (modelName === 'Lamborghini Revuelto') {
+                buildLamborghiniRevueltoGeometry(carGroup);
+            } else {
+                buildMcLarenP1Geometry(carGroup);
+            }
+
+            // Construir las 4 ruedas detalladas con discos de freno y calipers
+            const wheelPositions = [
+                { x: -0.94, y: 0.34, z: 1.38, isFront: true, isLeft: true },
+                { x: 0.94, y: 0.34, z: 1.38, isFront: true, isLeft: false },
+                { x: -0.98, y: 0.36, z: -1.36, isFront: false, isLeft: true },
+                { x: 0.98, y: 0.36, z: -1.36, isFront: false, isLeft: false }
+            ];
+
+            wheelPositions.forEach((wp) => {
+                const wheel = createDetailedWheel(wp.isFront ? 0.34 : 0.36, wp.isFront ? 0.26 : 0.31, tireMaterial, wp.isLeft, modelName);
+                wheel.position.set(wp.x, wp.y, wp.z);
+                carGroup.add(wheel);
+                wheelGroups.push(wheel);
+            });
+
+            // Construir Cabina Interior Ultra Detallada con Tablero Digital y Volante Deportivo
+            buildDetailedCockpit3D(carGroup);
+
+            // Luces Spot reales proyectadas hacia el asfalto para conducción nocturna
+            buildRealCarHeadlights(carGroup);
+
+            // Efecto de animación suave de suspensión al cambiar de auto
+            carGroup.scale.set(0.92, 0.92, 0.92);
+            currentCarMeshGroup = carGroup;
+            carRootGroup.add(currentCarMeshGroup);
+        }
+
+        /**
+         * Geometría Procedural 1: FERRARI SF90 STRADALE
+         * Perfil aerodinámico italiano, nariz de tiburón, arbotantes traseros y 4 luces traseras cuadradas/redondeadas.
+         */
+        function buildFerrariSF90Geometry(group) {
+            // Cuerpo central esculpido
+            const mainBodyGeo = new THREE.BoxGeometry(1.94, 0.44, 4.45, 12, 4, 24);
+            const pos = mainBodyGeo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                let x = pos.getX(i);
+                let y = pos.getY(i);
+                let z = pos.getZ(i);
+
+                // Inclinación agresiva del capó delantero (z > 0.8)
+                if (z > 0.8 && y > 0) {
+                    const factor = (z - 0.8) / 1.42;
+                    y -= factor * 0.25;
+                }
+                // Estrechamiento de cintura tipo reloj de arena (cintura aerodinámica)
+                if (Math.abs(z) < 0.9) {
+                    x *= 0.93;
+                }
+                // Punta frontal en nariz de tiburón
+                if (z > 1.8) {
+                    x *= 0.84;
+                }
+                // Curva suave superior en los guardabarros
+                if (y > 0.1 && Math.abs(x) > 0.7 && Math.abs(z) > 0.95 && Math.abs(z) < 1.8) {
+                    y += 0.06;
+                }
+                pos.setXYZ(i, x, y, z);
+            }
+            mainBodyGeo.computeVertexNormals();
+            const mainBody = new THREE.Mesh(mainBodyGeo, bodyPhysicalMaterial);
+            mainBody.position.y = 0.46;
+            group.add(mainBody);
+
+            // Cabina en forma de lágrima negra/cristal
+            const cabinGeo = new THREE.SphereGeometry(0.78, 32, 20);
+            cabinGeo.scale(1.02, 0.52, 1.65);
+            const cabin = new THREE.Mesh(cabinGeo, glassMaterial);
+            cabin.position.set(0, 0.74, -0.05);
+            group.add(cabin);
+
+            // Arbotantes traseros (Flying Buttresses característicos de Ferrari)
+            [-0.58, 0.58].forEach((sideX) => {
+                const buttressGeo = new THREE.BoxGeometry(0.18, 0.24, 1.35);
+                const buttress = new THREE.Mesh(buttressGeo, bodyPhysicalMaterial);
+                buttress.position.set(sideX, 0.74, -0.95);
+                buttress.rotation.x = 0.18;
+                buttress.rotation.y = sideX > 0 ? 0.08 : -0.08;
+                group.add(buttress);
+            });
+
+            // Splitter frontal inferior en fibra de carbono
+            const splitterGeo = new THREE.BoxGeometry(1.92, 0.06, 0.65);
+            const splitter = new THREE.Mesh(splitterGeo, carbonMaterial);
+            splitter.position.set(0, 0.20, 2.02);
+            group.add(splitter);
+
+            // Faldones laterales en carbono
+            const skirtGeo = new THREE.BoxGeometry(2.00, 0.08, 2.1);
+            const skirt = new THREE.Mesh(skirtGeo, carbonMaterial);
+            skirt.position.set(0, 0.21, 0);
+            group.add(skirt);
+
+            // Alerón trasero activo (Shut-off Gurney / Active Wing)
+            const wingGroup = new THREE.Group();
+            const wingBladeGeo = new THREE.BoxGeometry(1.78, 0.05, 0.34);
+            const wingBlade = new THREE.Mesh(wingBladeGeo, bodyPhysicalMaterial);
+            wingGroup.add(wingBlade);
+            wingGroup.position.set(0, 0.74, -2.08);
+            group.add(wingGroup);
+            activeSpoilerMesh = wingGroup;
+
+            // Faros delanteros en C afilada
+            [-0.68, 0.68].forEach((x) => {
+                const hlGeo = new THREE.BoxGeometry(0.42, 0.05, 0.18);
+                const hl = new THREE.Mesh(hlGeo, headLightMaterial);
+                hl.position.set(x, 0.45, 2.15);
+                hl.rotation.y = x > 0 ? -0.25 : 0.25;
+                group.add(hl);
+            });
+
+            // 4 Luces traseras icónicas del SF90 (dobles a cada lado)
+            [-0.72, -0.46, 0.46, 0.72].forEach((x) => {
+                const tlGeo = new THREE.BoxGeometry(0.18, 0.08, 0.08);
+                const tl = new THREE.Mesh(tlGeo, tailLightMaterial);
+                tl.position.set(x, 0.58, -2.23);
+                group.add(tl);
+            });
+
+            // Doble escape central elevado
+            [-0.18, 0.18].forEach((x) => {
+                const exhGeo = new THREE.CylinderGeometry(0.065, 0.065, 0.18, 20);
+                const exh = new THREE.Mesh(exhGeo, rimMaterial);
+                exh.rotation.x = Math.PI / 2;
+                exh.position.set(x, 0.48, -2.24);
+                group.add(exh);
+            });
+
+            // Difusor trasero
+            const diffGeo = new THREE.BoxGeometry(1.82, 0.22, 0.45);
+            const diff = new THREE.Mesh(diffGeo, carbonMaterial);
+            diff.position.set(0, 0.25, -2.08);
+            group.add(diff);
+        }
+
+        /**
+         * Geometría Procedural 2: LAMBORGHINI REVUELTO
+         * Silueta acuñada stealth-fighter hexagonal, luces LED en forma de Y y escape central elevado.
+         */
+        function buildLamborghiniRevueltoGeometry(group) {
+            // Cuerpo en cuña angular agresiva
+            const wedgeGeo = new THREE.BoxGeometry(2.06, 0.42, 4.62, 10, 4, 20);
+            const pos = wedgeGeo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                let x = pos.getX(i);
+                let y = pos.getY(i);
+                let z = pos.getZ(i);
+
+                // Perfil en cuña continua desde la nariz hasta la cola
+                if (z > 0.4 && y > 0) {
+                    y -= ((z - 0.4) / 1.9) * 0.28;
+                }
+                // Punta frontal hexagonal en V
+                if (z > 1.7) {
+                    x *= 0.80;
+                }
+                // Ensanchamiento agresivo en los pasos de rueda traseros
+                if (z < -0.6 && z > -1.9) {
+                    x *= 1.05;
+                    if (y > 0) y += 0.05;
+                }
+                pos.setXYZ(i, x, y, z);
+            }
+            wedgeGeo.computeVertexNormals();
+            const wedgeBody = new THREE.Mesh(wedgeGeo, bodyPhysicalMaterial);
+            wedgeBody.position.y = 0.44;
+            group.add(wedgeBody);
+
+            // Cabina facetada estilo caza furtivo
+            const canopyGeo = new THREE.CylinderGeometry(0.55, 0.88, 1.95, 6);
+            canopyGeo.rotateX(Math.PI / 2);
+            canopyGeo.scale(1.0, 0.42, 1.0);
+            const canopy = new THREE.Mesh(canopyGeo, glassMaterial);
+            canopy.position.set(0, 0.72, 0.05);
+            group.add(canopy);
+
+            // Grandes tomas de aire laterales en Y
+            [-0.96, 0.96].forEach((x) => {
+                const intakeGeo = new THREE.BoxGeometry(0.16, 0.34, 1.15);
+                const intake = new THREE.Mesh(intakeGeo, carbonMaterial);
+                intake.position.set(x, 0.48, -0.45);
+                intake.rotation.y = x > 0 ? -0.12 : 0.12;
+                group.add(intake);
+            });
+
+            // Cubierta de motor V12 expuesta en carbono
+            const engineDeckGeo = new THREE.BoxGeometry(0.72, 0.12, 1.25);
+            const engineDeck = new THREE.Mesh(engineDeckGeo, carbonMaterial);
+            engineDeck.position.set(0, 0.71, -1.25);
+            group.add(engineDeck);
+
+            // Alerón trasero activo en delta
+            const wingGroup = new THREE.Group();
+            const wingGeo = new THREE.BoxGeometry(1.92, 0.05, 0.36);
+            const wingMesh = new THREE.Mesh(wingGeo, bodyPhysicalMaterial);
+            wingGroup.add(wingMesh);
+            wingGroup.position.set(0, 0.78, -2.18);
+            group.add(wingGroup);
+            activeSpoilerMesh = wingGroup;
+
+            // Faros delanteros icónicos en Y (Y-Shaped DRLs)
+            [-0.76, 0.76].forEach((x) => {
+                const yLight1 = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 0.08), headLightMaterial);
+                yLight1.position.set(x, 0.43, 2.22);
+                yLight1.rotation.y = x > 0 ? -0.35 : 0.35;
+                group.add(yLight1);
+
+                const yLight2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.18), headLightMaterial);
+                yLight2.position.set(x * 1.05, 0.38, 2.15);
+                group.add(yLight2);
+            });
+
+            // Luces traseras en Y acostada
+            [-0.68, 0.68].forEach((x) => {
+                const rearY = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.05, 0.08), tailLightMaterial);
+                rearY.position.set(x, 0.64, -2.31);
+                rearY.rotation.z = x > 0 ? 0.15 : -0.15;
+                group.add(rearY);
+            });
+
+            // Escape hexagonal doble elevado central
+            [-0.16, 0.16].forEach((x) => {
+                const hexExh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.2, 6), rimMaterial);
+                hexExh.rotation.x = Math.PI / 2;
+                hexExh.position.set(x, 0.63, -2.32);
+                group.add(hexExh);
+            });
+
+            // Splitter y difusor agresivo
+            const frontSplitter = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.07, 0.7), carbonMaterial);
+            frontSplitter.position.set(0, 0.19, 2.08);
+            group.add(frontSplitter);
+
+            const rearDiff = new THREE.Mesh(new THREE.BoxGeometry(1.96, 0.28, 0.55), carbonMaterial);
+            rearDiff.position.set(0, 0.26, -2.12);
+            group.add(rearDiff);
+        }
+
+        /**
+         * Geometría Procedural 3: McLAREN P1
+         * Diseño orgánico bio-aerodinámico, cabina en gota de agua, snorkel de techo y gran alerón retráctil.
+         */
+        function buildMcLarenP1Geometry(group) {
+            // Cuerpo orgánico fluido
+            const p1BodyGeo = new THREE.BoxGeometry(1.90, 0.43, 4.40, 14, 5, 24);
+            const pos = p1BodyGeo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                let x = pos.getX(i);
+                let y = pos.getY(i);
+                let z = pos.getZ(i);
+
+                // Curvas suaves en los laterales (puertas esculpidas)
+                if (Math.abs(z) < 0.85) {
+                    x *= 0.90;
+                }
+                // Nariz redondeada y baja
+                if (z > 0.7 && y > 0) {
+                    y -= ((z - 0.7) / 1.5) * 0.27;
+                }
+                if (z > 1.75) {
+                    x *= 0.82;
+                }
+                // Cola estrechada para flujo de aire
+                if (z < -1.6) {
+                    x *= 0.88;
+                }
+                pos.setXYZ(i, x, y, z);
+            }
+            p1BodyGeo.computeVertexNormals();
+            const p1Body = new THREE.Mesh(p1BodyGeo, bodyPhysicalMaterial);
+            p1Body.position.y = 0.45;
+            group.add(p1Body);
+
+            // Cúpula en gota de agua (Teardrop glasshouse) + Snorkel de admisión superior
+            const domeGeo = new THREE.SphereGeometry(0.76, 32, 24);
+            domeGeo.scale(0.96, 0.54, 1.72);
+            const dome = new THREE.Mesh(domeGeo, glassMaterial);
+            dome.position.set(0, 0.75, -0.08);
+            group.add(dome);
+
+            const snorkelGeo = new THREE.BoxGeometry(0.22, 0.12, 0.85);
+            const snorkel = new THREE.Mesh(snorkelGeo, carbonMaterial);
+            snorkel.position.set(0, 1.02, -0.25);
+            group.add(snorkel);
+
+            // Paneles laterales en carbono en las puertas
+            [-0.88, 0.88].forEach((x) => {
+                const doorBlade = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, 1.35), carbonMaterial);
+                doorBlade.position.set(x, 0.44, -0.1);
+                group.add(doorBlade);
+            });
+
+            // Gran Alerón Trasero Activo con doble pilono central
+            const wingGroup = new THREE.Group();
+            const wingBlade = new THREE.Mesh(new THREE.BoxGeometry(1.80, 0.05, 0.38), carbonMaterial);
+            wingBlade.position.y = 0.12;
+            wingGroup.add(wingBlade);
+
+            [-0.28, 0.28].forEach((px) => {
+                const strut = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.22), carbonMaterial);
+                strut.position.set(px, 0.02, 0.05);
+                strut.rotation.x = -0.3;
+                wingGroup.add(strut);
+            });
+            wingGroup.position.set(0, 0.72, -2.06);
+            group.add(wingGroup);
+            activeSpoilerMesh = wingGroup;
+
+            // Faros Boomerang McLaren
+            [-0.66, 0.66].forEach((x) => {
+                const bLight = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.05, 0.22), headLightMaterial);
+                bLight.position.set(x, 0.43, 2.08);
+                bLight.rotation.y = x > 0 ? -0.35 : 0.35;
+                group.add(bLight);
+            });
+
+            // Tira LED trasera curva continua del P1
+            [-0.58, 0.58].forEach((x) => {
+                const strip = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.045, 0.08), tailLightMaterial);
+                strip.position.set(x, 0.56, -2.20);
+                strip.rotation.z = x > 0 ? -0.12 : 0.12;
+                group.add(strip);
+            });
+
+            // Gran salida de escape central única tipo P1
+            const centralExhaust = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.16, 0.15), rimMaterial);
+            centralExhaust.position.set(0, 0.52, -2.21);
+            group.add(centralExhaust);
+
+            // Splitter frontal y difusor de carbono
+            const frontLip = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.06, 0.68), carbonMaterial);
+            frontLip.position.set(0, 0.20, 1.98);
+            group.add(frontLip);
+
+            const rearDiff = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.25, 0.5), carbonMaterial);
+            rearDiff.position.set(0, 0.24, -2.02);
+            group.add(rearDiff);
+        }
+
+        /**
+         * Crea una rueda 3D detallada con neumático, aro metálico, rayos, disco perforado y caliper rojo.
+         */
+        function createDetailedWheel(radius, width, tireMat, isLeft, modelName) {
+            const wheelGroup = new THREE.Group();
+
+            // Neumático
+            const tireGeo = new THREE.CylinderGeometry(radius, radius, width, 32);
+            tireGeo.rotateZ(Math.PI / 2);
+            const tire = new THREE.Mesh(tireGeo, tireMat);
+            wheelGroup.add(tire);
+
+            // Aro exterior
+            const rimOuterGeo = new THREE.CylinderGeometry(radius * 0.72, radius * 0.72, width + 0.01, 24);
+            rimOuterGeo.rotateZ(Math.PI / 2);
+            const rimOuter = new THREE.Mesh(rimOuterGeo, rimMaterial);
+            wheelGroup.add(rimOuter);
+
+            // Rayos del rin (5 rayos dobles para SF90, 7 para Revuelto, 10 para P1)
+            const spokeCount = modelName === 'Ferrari SF90' ? 5 : (modelName === 'Lamborghini Revuelto' ? 7 : 10);
+            const sideOffset = isLeft ? -width * 0.42 : width * 0.42;
+            for (let i = 0; i < spokeCount; i++) {
+                const angle = (i / spokeCount) * Math.PI * 2;
+                const spokeGeo = new THREE.BoxGeometry(0.03, radius * 1.32, 0.045);
+                const spoke = new THREE.Mesh(spokeGeo, rimMaterial);
+                spoke.position.x = sideOffset;
+                spoke.rotation.x = angle;
+                wheelGroup.add(spoke);
+            }
+
+            // Tuerca central roja Center-Lock
+            const nutGeo = new THREE.CylinderGeometry(0.055, 0.055, width + 0.03, 16);
+            nutGeo.rotateZ(Math.PI / 2);
+            const nut = new THREE.Mesh(nutGeo, caliperMaterial);
+            wheelGroup.add(nut);
+
+            // Pinza de freno (Caliper)
+            const caliperGeo = new THREE.BoxGeometry(width * 0.75, 0.16, 0.09);
+            const caliper = new THREE.Mesh(caliperGeo, caliperMaterial);
+            caliper.position.set(0, 0.06, -radius * 0.42);
+            wheelGroup.add(caliper);
+
+            return wheelGroup;
+        }
+
+        /**
+         * Cambia el modelo de hiperauto en tiempo real y actualiza la UI de telemetría.
+         */
+        function selectCarModel(modelName) {
+            window.gameConfig.selectedCar = modelName;
+            const specs = HYPERCAR_SPECS[modelName];
+
+            // Reconstruir geometría 3D en tiempo real
+            buildProceduralHypercar(modelName);
+
+            // Actualizar textos de telemetría
+            document.getElementById('car-brand-badge').textContent = specs.brand;
+            document.getElementById('car-title-display').textContent = modelName;
+            document.getElementById('car-class-badge').textContent = specs.rating;
+            document.getElementById('spec-hp').textContent = specs.hp;
+            document.getElementById('spec-accel').textContent = specs.accel;
+            document.getElementById('spec-topspeed').textContent = specs.topSpeed;
+            document.getElementById('lobby-selected-car').textContent = modelName;
+
+            // Actualizar barras animadas
+            document.getElementById('bar-speed').style.width = `${specs.bars.speed}%`;
+            document.getElementById('bar-speed-val').textContent = `${specs.bars.speed}%`;
+            document.getElementById('bar-accel').style.width = `${specs.bars.accel}%`;
+            document.getElementById('bar-accel-val').textContent = `${specs.bars.accel}%`;
+            document.getElementById('bar-aero').style.width = `${specs.bars.aero}%`;
+            document.getElementById('bar-aero-val').textContent = `${specs.bars.aero}%`;
+
+            // Actualizar botones activos en el dock inferior
+            const mapBtns = {
+                'Ferrari SF90': { btn: 'car-btn-sf90', check: 'check-sf90' },
+                'Lamborghini Revuelto': { btn: 'car-btn-revuelto', check: 'check-revuelto' },
+                'McLaren P1': { btn: 'car-btn-p1', check: 'check-p1' }
+            };
+
+            Object.keys(mapBtns).forEach((key) => {
+                const btnEl = document.getElementById(mapBtns[key].btn);
+                const checkEl = document.getElementById(mapBtns[key].check);
+                if (key === modelName) {
+                    btnEl.classList.add('active');
+                    checkEl.classList.replace('opacity-0', 'opacity-100');
+                } else {
+                    btnEl.classList.remove('active');
+                    checkEl.classList.replace('opacity-100', 'opacity-0');
+                }
+            });
+        }
+
+        /**
+         * Cambia la pintura del auto en tiempo real ajustando las propiedades de MeshPhysicalMaterial.
+         */
+        function selectPaint(paintKey) {
+            const paint = PAINT_PALETTE[paintKey];
+            if (!paint) return;
+
+            window.gameConfig.paintKey = paintKey;
+            window.gameConfig.paintName = paint.name;
+            window.gameConfig.paintHex = paint.color;
+
+            // Actualizar material físico en tiempo real
+            bodyPhysicalMaterial.color.setHex(paint.color);
+            bodyPhysicalMaterial.metalness = paint.metalness;
+            bodyPhysicalMaterial.roughness = paint.roughness;
+            bodyPhysicalMaterial.clearcoat = paint.clearcoat;
+            bodyPhysicalMaterial.clearcoatRoughness = paint.clearcoatRoughness;
+            bodyPhysicalMaterial.needsUpdate = true;
+
+            // Actualizar UI de selectores de color
+            document.getElementById('paint-name-label').textContent = paint.name;
+            ['rojo_corsa', 'platino_cromo', 'negro_mate', 'amarillo'].forEach((key) => {
+                const el = document.getElementById(`swatch-${key}`);
+                if (key === paintKey) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        /**
+         * Alterna el encendido de los faros LED del hiperauto.
+         */
+        function toggleCarLights() {
+            carLightsOn = !carLightsOn;
+            headLightMaterial.emissiveIntensity = carLightsOn ? 3.0 : 0.1;
+            tailLightMaterial.emissiveIntensity = carLightsOn ? 3.2 : 0.2;
+            const btn = document.getElementById('btn-toggle-lights');
+            btn.classList.toggle('active', carLightsOn);
+        }
+
+        /**
+         * Alterna la elevación e inclinación del alerón aerodinámico trasero.
+         */
+        function toggleAeroSpoiler() {
+            aeroDeployed = !aeroDeployed;
+        }
+
+        /**
+         * Cambia entre las vistas de cámara predefinidas en el Showroom.
+         */
+        function cycleCameraPreset() {
+            cameraPresetIndex = (cameraPresetIndex + 1) % CAMERA_PRESETS.length;
+            const preset = CAMERA_PRESETS[cameraPresetIndex];
+            targetCamPos.set(preset.pos.x, preset.pos.y, preset.pos.z);
+            document.getElementById('camera-label').textContent = preset.name;
+        }
+
+        /**
+         * Actualiza cualquier parámetro dentro de `window.gameConfig` y aplica cambios visuales/UI.
+         */
+        function updateConfig(key, value) {
+            window.gameConfig[key] = value;
+
+            // 1. Si cambia la calidad gráfica, ajustar el renderizador respetando el tope 1.5x
+            if (key === 'graphicsQuality') {
+                ['Baja', 'Media', 'Ultra RTX'].forEach((lvl) => {
+                    const btn = document.getElementById(`gfx-${lvl}`);
+                    if (btn) btn.classList.toggle('active', lvl === value);
+                });
+                document.getElementById('hud-quality-badge').textContent = value.toUpperCase();
+
+                let targetDPR = Math.min(window.devicePixelRatio || 1, 1.5);
+                if (value === 'Baja') {
+                    targetDPR = Math.min(targetDPR, 0.85);
+                    bodyPhysicalMaterial.envMapIntensity = 0.9;
+                } else if (value === 'Media') {
+                    targetDPR = Math.min(targetDPR, 1.15);
+                    bodyPhysicalMaterial.envMapIntensity = 1.25;
+                } else {
+                    targetDPR = Math.min(window.devicePixelRatio || 1, 1.5);
+                    bodyPhysicalMaterial.envMapIntensity = 1.55;
+                }
+                renderer.setPixelRatio(targetDPR);
+                applyFxQuality(value, targetDPR);
+                document.getElementById('hud-dpr-badge').textContent = `DPR ${targetDPR.toFixed(1)}x`;
+            }
+
+            // 2. Si cambia el tipo de control
+            if (key === 'controlType') {
+                ['Táctil', 'Giroscopio'].forEach((ctrl) => {
+                    const btn = document.getElementById(`ctrl-${ctrl}`);
+                    if (btn) btn.classList.toggle('active', ctrl === value);
+                });
+            }
+
+            // 3. Si cambia la sensibilidad
+            if (key === 'sensitivity') {
+                document.getElementById('sensitivity-value-label').textContent = `${value}%`;
+            }
+
+            // 4. Si cambia el modo de iluminación
+            if (key === 'lightingMode') {
+                const mapLight = {
+                    'Ciclo Día/Tarde/Noche dinámico': 'light-Ciclo',
+                    'Solo Día': 'light-Día',
+                    'Solo Noche': 'light-Noche'
+                };
+                Object.keys(mapLight).forEach((k) => {
+                    const btn = document.getElementById(mapLight[k]);
+                    if (btn) btn.classList.toggle('active', k === value);
+                });
+
+                // Previsualizar ambiente lumínico en el Showroom
+                if (value === 'Solo Día') {
+                    studioLights.ambient.intensity = 0.85;
+                    studioLights.keyLight.intensity = 2.8;
+                    scene.background.setHex(0x11131a);
+                    scene.fog.color.setHex(0x11131a);
+                } else if (value === 'Solo Noche') {
+                    studioLights.ambient.intensity = 0.35;
+                    studioLights.keyLight.intensity = 1.5;
+                    scene.background.setHex(0x040407);
+                    scene.fog.color.setHex(0x040407);
+                } else {
+                    studioLights.ambient.intensity = 0.55;
+                    studioLights.keyLight.intensity = 2.2;
+                    scene.background.setHex(0x07070a);
+                    scene.fog.color.setHex(0x07070a);
+                }
+            }
+
+            // 5. Si cambia la pista de F1
+            if (key === 'track') {
+                ['Monza', 'Mónaco', 'Spa', 'Silverstone'].forEach((t) => {
+                    const btn = document.getElementById(`track-${t}`);
+                    if (btn) {
+                        btn.classList.toggle('active', t === value);
+                        const svg = btn.querySelector('svg');
+                        if (svg) {
+                            svg.setAttribute('class', t === value
+                                ? 'w-full h-10 stroke-[#e53847] fill-none my-1'
+                                : 'w-full h-10 stroke-zinc-300 fill-none my-1');
+                        }
+                    }
+                });
+                document.getElementById('track-info-badge').textContent = TRACK_METADATA[value];
+            }
+
+            // 6. Si cambia el modo de juego
+            if (key === 'gameMode') {
+                ['Carrera Rápida', 'Campeonato GP', 'Contrarreloj'].forEach((m) => {
+                    const btn = document.getElementById(`mode-${m}`);
+                    if (btn) btn.classList.toggle('active', m === value);
+                });
+            }
+
+            // 7. Si cambia la cantidad de bots (1 a 5)
+            if (key === 'botCount') {
+                [1, 2, 3, 4, 5].forEach((n) => {
+                    const btn = document.getElementById(`bots-${n}`);
+                    if (btn) btn.classList.toggle('active', n === value);
+                });
+                document.getElementById('bot-count-badge').textContent = `${value} ${value === 1 ? 'Rival' : 'Rivales'}`;
+            }
+
+            // 8. Si cambia la habilidad de los bots
+            if (key === 'botSkill') {
+                ['Novato', 'Pro', 'Leyenda'].forEach((s) => {
+                    const btn = document.getElementById(`skill-${s}`);
+                    if (btn) btn.classList.toggle('active', s === value);
+                });
+            }
+
+            updateLobbySummaryText();
+        }
+
+        /**
+         * Actualiza el resumen inferior en el modal del Lobby.
+         */
+        function updateLobbySummaryText() {
+            const cfg = window.gameConfig;
+            const shortLight = cfg.lightingMode.includes('Ciclo') ? 'Ciclo Dinámico' : cfg.lightingMode;
+            document.getElementById('lobby-summary-text').textContent =
+                `${cfg.track} • ${cfg.botCount} Bots (${cfg.botSkill}) • ${shortLight}`;
+        }
+
+        /**
+         * Abre un modal por su ID con transición fluida.
+         */
+        function openModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) modal.classList.remove('modal-hidden');
+        }
+
+        /**
+         * Cierra un modal por su ID.
+         */
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) modal.classList.add('modal-hidden');
+        }
+
+        /**
+         * ============================================================================
+         * PARTE 2: CONEXIÓN DE "INICIAR CARRERA", GENERACIÓN DE CIRCUITO F1, CABINA Y FÍSICAS
+         * ============================================================================
+         */
+        function launchRaceSequence() {
+            // 1. Cerrar modal de Lobby y ocultar interfaz del Showroom sin borrarla del DOM
+            closeModal('lobby-modal');
+            closeModal('settings-modal');
+            closeModal('launch-modal');
+
+            const mainUiLayer = document.getElementById('ui-layer');
+            mainUiLayer.classList.add('hidden');
+
+            const raceHud = document.getElementById('race-hud-layer');
+            raceHud.classList.remove('hidden');
+            raceHud.classList.add('flex');
+
+            // 2. Ocultar escenario del Showroom y activar modo Carrera
+            if (showroomStageGroup) showroomStageGroup.visible = false;
+            isRacingMode = true;
+
+            // 3. Configurar UI de Controles según gameConfig ('Táctil' vs 'Giroscopio')
+            configureRaceControlsUI();
+
+            // 4. Construir la Pista F1 elegida, Paisaje, Nubes y Partículas de Viento
+            buildF1CircuitAndEnvironment(window.gameConfig.track);
+
+            // 5. Posicionar el Hiperauto en la Parrilla de Salida y reiniciar físicas
+            resetCarOnTrackGrid();
+        }
+
+        /**
+         * Permite regresar del Circuito al Showroom 3D conservando todos los menús intactos.
+         */
+        function exitRaceToShowroom() {
+            isRacingMode = false;
+
+            // Ocultar HUD de carrera y volver a mostrar UI principal del Showroom
+            const raceHud = document.getElementById('race-hud-layer');
+            raceHud.classList.add('hidden');
+            raceHud.classList.remove('flex');
+
+            const mainUiLayer = document.getElementById('ui-layer');
+            mainUiLayer.classList.remove('hidden');
+
+            // Limpiar geometría del circuito para liberar memoria móvil
+            if (raceWorldGroup) {
+                scene.remove(raceWorldGroup);
+                raceWorldGroup.traverse((child) => {
+                    if (child.geometry) child.geometry.dispose();
+                });
+                raceWorldGroup = null;
+            }
+
+            // Restaurar visibilidad y posición en el Showroom
+            if (showroomStageGroup) showroomStageGroup.visible = true;
+            if (cockpitGroup) cockpitGroup.visible = false;
+
+            carRootGroup.position.set(0, 0, 0);
+            carRootGroup.rotation.set(0, currentRotationY, 0);
+            if (currentCarMeshGroup) {
+                currentCarMeshGroup.rotation.set(0, 0, 0);
+            }
+            if (carSpotLightLeft) carSpotLightLeft.intensity = 0;
+            if (carSpotLightRight) carSpotLightRight.intensity = 0;
+
+            camera.fov = 42;
+            camera.updateProjectionMatrix();
+            updateConfig('lightingMode', window.gameConfig.lightingMode);
+        }
+
+        /**
+         * Construye la cabina interior detallada (salpicadero de carbono, pilares A,
+         * pantalla OLED con telemetría dinámica y volante deportivo sincronizado).
+         */
+        function buildDetailedCockpit3D(carGroup) {
+            cockpitGroup = new THREE.Group();
+            // En nuestro modelo 3D, el frente del auto apunta hacia +Z
+            cockpitGroup.position.set(0, 0.68, 0.15);
+            cockpitGroup.visible = (isRacingMode && raceCameraView === 'INTERIOR');
+
+            // 1. Tablero superior / Salpicadero en Alcántara y Fibra de Carbono
+            const dashTopGeo = new THREE.BoxGeometry(1.42, 0.16, 0.58);
+            const dashTop = new THREE.Mesh(dashTopGeo, carbonMaterial);
+            dashTop.position.set(0, -0.05, 0.36);
+            cockpitGroup.add(dashTop);
+
+            // Visera de instrumentos sobre el cuadro digital
+            const hoodGeo = new THREE.CylinderGeometry(0.22, 0.25, 0.34, 20, 1, false, 0, Math.PI);
+            hoodGeo.rotateZ(-Math.PI / 2);
+            hoodGeo.rotateY(Math.PI / 2);
+            const hoodMesh = new THREE.Mesh(hoodGeo, carbonMaterial);
+            hoodMesh.position.set(0, 0.02, 0.25);
+            cockpitGroup.add(hoodMesh);
+
+            // Pilares A laterales del parabrisas
+            [-0.66, 0.66].forEach((sideX) => {
+                const pillarGeo = new THREE.BoxGeometry(0.06, 0.48, 0.08);
+                const pillar = new THREE.Mesh(pillarGeo, carbonMaterial);
+                pillar.position.set(sideX, 0.18, 0.32);
+                pillar.rotation.z = sideX > 0 ? 0.32 : -0.32;
+                pillar.rotation.x = -0.5;
+                cockpitGroup.add(pillar);
+            });
+
+            // Retrovisor interior central superior
+            const mirrorGeo = new THREE.BoxGeometry(0.26, 0.065, 0.03);
+            const mirrorMesh = new THREE.Mesh(mirrorGeo, carbonMaterial);
+            mirrorMesh.position.set(0, 0.34, 0.26);
+            cockpitGroup.add(mirrorMesh);
+
+            // 2. Pantalla Digital Funcional (CanvasTexture de alta nitidez)
+            if (!dashCanvas) {
+                dashCanvas = document.createElement('canvas');
+                dashCanvas.width = 512;
+                dashCanvas.height = 256;
+                dashCtx = dashCanvas.getContext('2d');
+                dashTexture = new THREE.CanvasTexture(dashCanvas);
+            }
+            const screenGeo = new THREE.PlaneGeometry(0.36, 0.18);
+            const screenMat = new THREE.MeshBasicMaterial({ map: dashTexture });
+            const screenMesh = new THREE.Mesh(screenGeo, screenMat);
+            // Mirando hacia el conductor (que está en z = -0.22 mirando hacia +Z)
+            screenMesh.position.set(0, 0.03, 0.20);
+            screenMesh.rotation.y = Math.PI;
+            cockpitGroup.add(screenMesh);
+
+            // 3. Volante Deportivo F1 / Hypercar que gira en sincronía con la dirección
+            steeringWheelMesh = new THREE.Group();
+            steeringWheelMesh.position.set(0, -0.02, 0.05);
+
+            // Aro del volante achatado
+            const wheelRingGeo = new THREE.TorusGeometry(0.145, 0.022, 14, 32);
+            const wheelRing = new THREE.Mesh(wheelRingGeo, carbonMaterial);
+            steeringWheelMesh.add(wheelRing);
+
+            // Marca roja central de las 12 en punto
+            const centerStripeGeo = new THREE.TorusGeometry(0.146, 0.024, 12, 12, 0.25);
+            const centerStripe = new THREE.Mesh(centerStripeGeo, caliperMaterial);
+            centerStripe.rotation.z = Math.PI / 2 - 0.125;
+            steeringWheelMesh.add(centerStripe);
+
+            // Centro del volante y radios metálicos
+            const hubGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.04, 16);
+            hubGeo.rotateX(Math.PI / 2);
+            const hubMesh = new THREE.Mesh(hubGeo, rimMaterial);
+            steeringWheelMesh.add(hubMesh);
+
+            const spokeHGeo = new THREE.BoxGeometry(0.26, 0.03, 0.02);
+            const spokeH = new THREE.Mesh(spokeHGeo, rimMaterial);
+            steeringWheelMesh.add(spokeH);
+
+            // Botones Manettino rojos en el volante
+            [-0.06, 0.06].forEach((bx) => {
+                const btnGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.03, 12);
+                btnGeo.rotateX(Math.PI / 2);
+                const btn = new THREE.Mesh(btnGeo, caliperMaterial);
+                btn.position.set(bx, -0.02, -0.015);
+                steeringWheelMesh.add(btn);
+            });
+
+            // Levas de cambio (Paddle Shifters) detrás del volante
+            [-0.13, 0.13].forEach((px) => {
+                const paddleGeo = new THREE.BoxGeometry(0.025, 0.09, 0.01);
+                const paddle = new THREE.Mesh(paddleGeo, caliperMaterial);
+                paddle.position.set(px, 0.02, 0.025);
+                steeringWheelMesh.add(paddle);
+            });
+
+            cockpitGroup.add(steeringWheelMesh);
+            carGroup.add(cockpitGroup);
+
+            updateDigitalDashboardCanvas();
+        }
+
+        /**
+         * Dibuja en tiempo real el Tablero Digital (Velocímetro, Marcha, RPM, Modo y Pista)
+         * dentro del habitáculo 3D.
+         */
+        function updateDigitalDashboardCanvas() {
+            if (!dashCtx || !dashTexture) return;
+            const ctx = dashCtx;
+            const w = dashCanvas.width;
+            const h = dashCanvas.height;
+
+            // Fondo negro profundo de pantalla OLED
+            ctx.fillStyle = '#07080d';
+            ctx.fillRect(0, 0, w, h);
+
+            // Borde carmesí tecnológico
+            ctx.strokeStyle = '#e53847';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(8, 8, w - 16, h - 16);
+
+            // Barra superior de RPM
+            const rpmRatio = Math.min(1, Math.max(0, (carPhysics.rpm - 1000) / 8000));
+            const totalBars = 18;
+            const activeBars = Math.round(rpmRatio * totalBars);
+            for (let i = 0; i < totalBars; i++) {
+                if (i < activeBars) {
+                    ctx.fillStyle = i < 10 ? '#10b981' : (i < 15 ? '#f59e0b' : '#e53847');
+                } else {
+                    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                }
+                ctx.fillRect(24 + i * 25.8, 22, 20, 18);
+            }
+
+            // Indicador de Marcha central-izquierda
+            ctx.fillStyle = '#e53847';
+            ctx.font = 'bold 20px Orbitron, sans-serif';
+            ctx.fillText('GEAR', 42, 82);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 84px Orbitron, sans-serif';
+            ctx.fillText(String(carPhysics.gear), 44, 168);
+
+            // Velocidad Digital Principal
+            const spdText = String(Math.round(carPhysics.speedKmh)).padStart(3, '0');
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 92px Orbitron, sans-serif';
+            ctx.fillText(spdText, 165, 162);
+
+            ctx.fillStyle = '#9496a1';
+            ctx.font = 'bold 22px Rajdhani, sans-serif';
+            ctx.fillText('KM/H', 385, 160);
+
+            // Datos inferiores: RPM numéricas, Pista y Estado Faros
+            ctx.fillStyle = '#ff7582';
+            ctx.font = 'bold 22px Rajdhani, sans-serif';
+            ctx.fillText(`${Math.round(carPhysics.rpm)} RPM`, 42, 222);
+
+            ctx.fillStyle = '#10b981';
+            ctx.fillText(window.gameConfig.track.toUpperCase(), 210, 222);
+
+            ctx.fillStyle = carLightsOn ? '#38bdf8' : '#64748b';
+            ctx.fillText(carLightsOn ? 'LIGHTS ON' : 'DAYLIGHT', 365, 222);
+
+            dashTexture.needsUpdate = true;
+        }
+
+        /**
+         * Añade focos SpotLight reales a los faros delanteros del auto para iluminar la pista de noche.
+         */
+        function buildRealCarHeadlights(carGroup) {
+            carSpotLightLeft = new THREE.SpotLight(0xe8f6ff, 0, 65, Math.PI / 5, 0.45, 1.2);
+            carSpotLightLeft.position.set(-0.68, 0.55, 2.15);
+            const targetL = new THREE.Object3D();
+            targetL.position.set(-0.68, 0.1, 24);
+            carGroup.add(targetL);
+            carSpotLightLeft.target = targetL;
+            carGroup.add(carSpotLightLeft);
+
+            carSpotLightRight = new THREE.SpotLight(0xe8f6ff, 0, 65, Math.PI / 5, 0.45, 1.2);
+            carSpotLightRight.position.set(0.68, 0.55, 2.15);
+            const targetR = new THREE.Object3D();
+            targetR.position.set(0.68, 0.1, 24);
+            carGroup.add(targetR);
+            carSpotLightRight.target = targetR;
+            carGroup.add(carSpotLightRight);
+        }
+
+        /**
+         * Genera el circuito F1 seleccionado con curvas reales aproximadas, pianos (bordillos rojos y blancos),
+         * barreras de protección, árboles/paisaje, cielo con nubes suaves y partículas de viento.
+         */
+        function buildF1CircuitAndEnvironment(trackName) {
+            if (raceWorldGroup) {
+                scene.remove(raceWorldGroup);
+                raceWorldGroup.traverse((c) => { if (c.geometry) c.geometry.dispose(); });
+            }
+            raceWorldGroup = new THREE.Group();
+            scene.add(raceWorldGroup);
+
+            // 1. Definir trazado de puntos cerrados según la pista F1 elegida
+            const rawControlPoints = getTrackControlPoints(trackName);
+            trackCurve = new THREE.CatmullRomCurve3(rawControlPoints, true, 'catmullrom', 0.45);
+            trackLengthMeters = trackCurve.getLength();
+
+            const segments = 320;
+            trackPoints = [];
+            for (let i = 0; i < segments; i++) {
+                const t = i / segments;
+                const pt = trackCurve.getPointAt(t);
+                const tangent = trackCurve.getTangentAt(t).normalize();
+                const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+                trackPoints.push({ point: pt, tangent, normal });
+            }
+
+            // 2. Construir malla del asfalto, pianos (rojos y blancos) y muros exteriores
+            buildTrackRibbonMeshes(segments);
+
+            // 3. Construir terreno fotorrealista, árboles y pórtico de Salida/Meta
+            buildLandscapeAndScenery();
+
+            // 4. Construir Cielo con Nubes Suaves y Sistema de Partículas de Viento
+            buildSkyCloudsAndWindParticles();
+
+            // 5. Inicializar hora del día según `window.gameConfig.lightingMode`
+            if (window.gameConfig.lightingMode === 'Solo Día') {
+                dayNightCycleTime = 0.25;
+            } else if (window.gameConfig.lightingMode === 'Solo Noche') {
+                dayNightCycleTime = 0.78;
+            } else {
+                dayNightCycleTime = 0.36; // Inicia entrando al atardecer para apreciar transición Día -> Tarde -> Noche
+            }
+            updateDynamicWeatherAndLighting(0);
+        }
+
+        /**
+         * Devuelve los puntos de control 3D característicos de cada circuito real de F1.
+         */
+        function getTrackControlPoints(trackName) {
+            const scale = 2.55;
+            let coords = [];
+            if (trackName === 'Monza') {
+                // Recta principal larga, Variante del Rettifilo, Curva Grande, Lesmo, Ascari y Parabolica
+                coords = [
+                    [0, 0], [0, 140], [-18, 165], [-10, 185], [-55, 225],
+                    [-115, 215], [-125, 175], [-95, 120], [-95, 40],
+                    [-115, -35], [-90, -110], [-30, -125], [0, -75]
+                ];
+            } else if (trackName === 'Mónaco') {
+                // Trazado técnico y revirado: Sainte Dévote, Casino, Horquilla Loews, Túnel y Piscina
+                coords = [
+                    [0, 0], [0, 85], [32, 110], [65, 95], [85, 55],
+                    [48, 30], [75, -5], [110, -45], [70, -95],
+                    [15, -85], [-25, -60], [-18, -25]
+                ];
+            } else if (trackName === 'Spa') {
+                // La Source, subida Eau Rouge / Raidillon, Kemmel, Pouhon, Blanchimont
+                coords = [
+                    [0, 0], [0, 95], [-38, 125], [-22, 165], [35, 225],
+                    [115, 205], [135, 130], [75, 85], [95, 20],
+                    [65, -65], [10, -105], [-25, -65]
+                ];
+            } else {
+                // Silverstone: Abbey, Maggotts, Becketts, Hangar Straight, Stowe
+                coords = [
+                    [0, 0], [0, 110], [45, 150], [95, 125], [75, 75],
+                    [115, 45], [95, -25], [125, -85], [55, -125],
+                    [-25, -95], [-45, -35]
+                ];
+            }
+            return coords.map(([x, z]) => new THREE.Vector3(x * scale, 0, z * scale));
+        }
+
+        /**
+         * Construye las cintas geométricas del asfalto, línea blanca, pianos rojos/blancos y barreras TecPro/Armco.
+         */
+        function buildTrackRibbonMeshes(segments) {
+            const roadPositions = [];
+            const roadUVs = [];
+            const roadIndices = [];
+
+            const kerbPositions = [];
+            const kerbColors = [];
+            const kerbIndices = [];
+
+            const wallPositions = [];
+            const wallColors = [];
+            const wallIndices = [];
+
+            const kerbWidth = 1.65;
+            const wallOffset = trackHalfWidth + kerbWidth + 0.9;
+            const wallHeight = 1.15;
+
+            for (let i = 0; i <= segments; i++) {
+                const idx = i % segments;
+                const { point, normal } = trackPoints[idx];
+
+                // Bordes del asfalto
+                const leftRoad = point.clone().addScaledVector(normal, trackHalfWidth);
+                const rightRoad = point.clone().addScaledVector(normal, -trackHalfWidth);
+
+                roadPositions.push(leftRoad.x, 0.02, leftRoad.z, rightRoad.x, 0.02, rightRoad.z);
+                roadUVs.push(0, i * 0.25, 1, i * 0.25);
+
+                // Pianos (Bordillos Rojos y Blancos a ambos lados)
+                const leftKerbOuter = point.clone().addScaledVector(normal, trackHalfWidth + kerbWidth);
+                const rightKerbOuter = point.clone().addScaledVector(normal, -(trackHalfWidth + kerbWidth));
+
+                kerbPositions.push(
+                    leftKerbOuter.x, 0.06, leftKerbOuter.z,
+                    leftRoad.x, 0.03, leftRoad.z,
+                    rightRoad.x, 0.03, rightRoad.z,
+                    rightKerbOuter.x, 0.06, rightKerbOuter.z
+                );
+
+                // Alternar bloques Rojo (#e53847) y Blanco (#f4f4f6) en los pianos
+                const isRedBlock = (i % 2 === 0);
+                const rCol = isRedBlock ? [0.90, 0.18, 0.24] : [0.96, 0.96, 0.98];
+                for (let k = 0; k < 4; k++) {
+                    kerbColors.push(rCol[0], rCol[1], rCol[2]);
+                }
+
+                // Barreras de contención laterales
+                const leftWallBase = point.clone().addScaledVector(normal, wallOffset);
+                const rightWallBase = point.clone().addScaledVector(normal, -wallOffset);
+
+                wallPositions.push(
+                    leftWallBase.x, 0, leftWallBase.z,
+                    leftWallBase.x, wallHeight, leftWallBase.z,
+                    rightWallBase.x, 0, rightWallBase.z,
+                    rightWallBase.x, wallHeight, rightWallBase.z
+                );
+
+                const isTecProRed = (Math.floor(i / 4) % 2 === 0);
+                const wCol = isTecProRed ? [0.75, 0.15, 0.20] : [0.22, 0.24, 0.29];
+                for (let w = 0; w < 4; w++) {
+                    wallColors.push(wCol[0], wCol[1], wCol[2]);
+                }
+
+                if (i < segments) {
+                    // Índices asfalto
+                    const rBase = i * 2;
+                    roadIndices.push(rBase, rBase + 1, rBase + 2, rBase + 1, rBase + 3, rBase + 2);
+
+                    // Índices pianos (izquierdo y derecho)
+                    const kBase = i * 4;
+                    kerbIndices.push(
+                        kBase, kBase + 1, kBase + 4, kBase + 1, kBase + 5, kBase + 4,
+                        kBase + 2, kBase + 3, kBase + 6, kBase + 3, kBase + 7, kBase + 6
+                    );
+
+                    // Índices barreras (izquierda y derecha)
+                    const wBase = i * 4;
+                    wallIndices.push(
+                        wBase, wBase + 1, wBase + 4, wBase + 1, wBase + 5, wBase + 4,
+                        wBase + 2, wBase + 6, wBase + 3, wBase + 3, wBase + 6, wBase + 7
+                    );
+                }
+            }
+
+            // Textura procedural de asfalto con línea central de trazada y parrilla
+            const asphaltCanvas = document.createElement('canvas');
+            asphaltCanvas.width = 256;
+            asphaltCanvas.height = 256;
+            const actx = asphaltCanvas.getContext('2d');
+            actx.fillStyle = '#18191f';
+            actx.fillRect(0, 0, 256, 256);
+            // Granulado sutil de asfalto
+            for (let n = 0; n < 1400; n++) {
+                const gray = 20 + Math.floor(Math.random() * 18);
+                actx.fillStyle = `rgb(${gray},${gray},${gray + 3})`;
+                actx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+            }
+            // Líneas blancas laterales de límite de pista
+            actx.fillStyle = '#e4e4e7';
+            actx.fillRect(6, 0, 5, 256);
+            actx.fillRect(245, 0, 5, 256);
+
+            const asphaltTex = new THREE.CanvasTexture(asphaltCanvas);
+            asphaltTex.wrapS = THREE.RepeatWrapping;
+            asphaltTex.wrapT = THREE.RepeatWrapping;
+
+            const roadGeo = new THREE.BufferGeometry();
+            roadGeo.setAttribute('position', new THREE.Float32BufferAttribute(roadPositions, 3));
+            roadGeo.setAttribute('uv', new THREE.Float32BufferAttribute(roadUVs, 2));
+            roadGeo.setIndex(roadIndices);
+            roadGeo.computeVertexNormals();
+
+            const roadMat = new THREE.MeshStandardMaterial({
+                map: asphaltTex,
+                roughness: 0.62,
+                metalness: 0.15
+            });
+            const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+            raceWorldGroup.add(roadMesh);
+
+            // Malla de Pianos Rojos y Blancos
+            const kerbGeo = new THREE.BufferGeometry();
+            kerbGeo.setAttribute('position', new THREE.Float32BufferAttribute(kerbPositions, 3));
+            kerbGeo.setAttribute('color', new THREE.Float32BufferAttribute(kerbColors, 3));
+            kerbGeo.setIndex(kerbIndices);
+            kerbGeo.computeVertexNormals();
+            const kerbMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45 });
+            raceWorldGroup.add(new THREE.Mesh(kerbGeo, kerbMat));
+
+            // Malla de Muros / Barreras
+            const wallGeo = new THREE.BufferGeometry();
+            wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallPositions, 3));
+            wallGeo.setAttribute('color', new THREE.Float32BufferAttribute(wallColors, 3));
+            wallGeo.setIndex(wallIndices);
+            wallGeo.computeVertexNormals();
+            const wallMat = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                roughness: 0.4,
+                metalness: 0.3,
+                side: THREE.DoubleSide
+            });
+            raceWorldGroup.add(new THREE.Mesh(wallGeo, wallMat));
+        }
+
+        /**
+         * Construye el terreno exterior, pórtico de Meta FIA con semáforos y árboles estilizados alrededor de la pista.
+         */
+        function buildLandscapeAndScenery() {
+            // Suelo de césped oscuro/escapatoria
+            const groundGeo = new THREE.PlaneGeometry(2400, 2400);
+            const groundMat = new THREE.MeshStandardMaterial({
+                color: 0x122216,
+                roughness: 0.92,
+                metalness: 0.05
+            });
+            const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+            groundMesh.rotation.x = -Math.PI / 2;
+            groundMesh.position.y = -0.02;
+            raceWorldGroup.add(groundMesh);
+
+            // Arco de Salida / Meta en el punto 0
+            const startInfo = trackPoints[0];
+            const gantryGroup = new THREE.Group();
+            gantryGroup.position.copy(startInfo.point);
+            const startAngle = Math.atan2(startInfo.tangent.x, startInfo.tangent.z);
+            gantryGroup.rotation.y = startAngle;
+
+            const pillarGeo = new THREE.BoxGeometry(0.6, 6.5, 0.6);
+            const leftPillar = new THREE.Mesh(pillarGeo, carbonMaterial);
+            leftPillar.position.set(-trackHalfWidth - 1.2, 3.25, 0);
+            const rightPillar = new THREE.Mesh(pillarGeo, carbonMaterial);
+            rightPillar.position.set(trackHalfWidth + 1.2, 3.25, 0);
+            const topBeam = new THREE.Mesh(new THREE.BoxGeometry((trackHalfWidth + 1.5) * 2, 1.1, 0.9), carbonMaterial);
+            topBeam.position.set(0, 6.2, 0);
+
+            // Semáforos de salida FIA
+            for (let s = -2; s <= 2; s++) {
+                const lightBox = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.15, 16), tailLightMaterial);
+                lightBox.rotation.x = Math.PI / 2;
+                lightBox.position.set(s * 1.4, 5.5, -0.45);
+                gantryGroup.add(lightBox);
+            }
+
+            gantryGroup.add(leftPillar, rightPillar, topBeam);
+            raceWorldGroup.add(gantryGroup);
+
+            // Árboles y tribunas distribuidos fuera de las barreras
+            const trunkGeo = new THREE.CylinderGeometry(0.28, 0.4, 2.2, 7);
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3b2818, roughness: 0.9 });
+            const foliageGeo = new THREE.ConeGeometry(2.2, 5.5, 7);
+            const foliageMat = new THREE.MeshStandardMaterial({ color: 0x1b3b22, roughness: 0.8 });
+
+            for (let i = 0; i < trackPoints.length; i += 5) {
+                const { point, normal } = trackPoints[i];
+                const side = (i % 10 === 0) ? 1 : -1;
+                const dist = trackHalfWidth + 8 + (i % 7) * 2.5;
+                const treePos = point.clone().addScaledVector(normal, side * dist);
+
+                const tree = new THREE.Group();
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.y = 1.1;
+                const crown = new THREE.Mesh(foliageGeo, foliageMat);
+                crown.position.y = 4.4;
+                tree.add(trunk, crown);
+                tree.position.copy(treePos);
+                raceWorldGroup.add(tree);
+            }
+        }
+
+        /**
+         * Crea el Domo de Cielo, Nubes suaves volumétricas y el sistema de Partículas de Viento aerodinámico.
+         */
+        function buildSkyCloudsAndWindParticles() {
+            // 1. Nubes suaves en el cielo
+            cloudsGroup = new THREE.Group();
+            const cloudGeo = new THREE.SphereGeometry(14, 12, 10);
+            cloudGeo.scale(2.4, 0.45, 1.3);
+            const cloudMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 1.0,
+                transparent: true,
+                opacity: 0.68
+            });
+
+            for (let c = 0; c < 28; c++) {
+                const cloud = new THREE.Mesh(cloudGeo, cloudMat);
+                const angle = (c / 28) * Math.PI * 2;
+                const radius = 120 + (c % 5) * 95;
+                cloud.position.set(
+                    Math.cos(angle) * radius,
+                    58 + (c % 4) * 14,
+                    Math.sin(angle) * radius
+                );
+                cloud.rotation.y = angle;
+                cloudsGroup.add(cloud);
+            }
+            raceWorldGroup.add(cloudsGroup);
+
+            // 2. Sistema de Partículas de Viento que fluyen alrededor del hiperauto según su velocidad
+            const windCount = 160;
+            windGeometry = new THREE.BufferGeometry();
+            const windPos = new Float32Array(windCount * 3);
+            for (let i = 0; i < windCount; i++) {
+                windPos[i * 3] = (Math.random() - 0.5) * 14;
+                windPos[i * 3 + 1] = 0.25 + Math.random() * 2.8;
+                windPos[i * 3 + 2] = (Math.random() - 0.5) * 28;
+            }
+            windGeometry.setAttribute('position', new THREE.BufferAttribute(windPos, 3));
+
+            const windMat = new THREE.PointsMaterial({
+                color: 0xdbeafe,
+                size: 0.14,
+                transparent: true,
+                opacity: 0.45
+            });
+            windParticles = new THREE.Points(windGeometry, windMat);
+            scene.add(windParticles);
+        }
+
+        /**
+         * Actualiza suavemente el ciclo Día / Tarde / Noche según `window.gameConfig.lightingMode`
+         * y enciende automáticamente los faros del hiperauto en la oscuridad.
+         */
+        function updateDynamicWeatherAndLighting(dt) {
+            const mode = window.gameConfig.lightingMode;
+            if (mode.includes('Ciclo')) {
+                dayNightCycleTime = (dayNightCycleTime + dt * 0.012) % 1.0;
+            } else if (mode === 'Solo Día') {
+                dayNightCycleTime = 0.25;
+            } else {
+                dayNightCycleTime = 0.78;
+            }
+
+            // Determinar fase solar (0.15-0.42 = Día, 0.42-0.62 = Tarde/Sunset, resto = Noche)
+            const sunElevation = Math.sin(dayNightCycleTime * Math.PI * 2);
+            const skyColor = new THREE.Color();
+            let phaseLabel = 'DÍA • FAROS AUTO';
+            let isDark = false;
+
+            if (sunElevation > 0.25) {
+                // Día despejado luminoso
+                skyColor.setHex(0x4a80c4);
+                studioLights.ambient.intensity = 0.95;
+                studioLights.keyLight.intensity = 2.6;
+                studioLights.keyLight.color.setHex(0xfffbeb);
+                phaseLabel = 'DÍA SOLEADO • GRIP ÓPTIMO';
+                isDark = false;
+            } else if (sunElevation > -0.15) {
+                // Atardecer / Amanecer Dorado-Carmesí
+                const t = (sunElevation + 0.15) / 0.40;
+                skyColor.lerpColors(new THREE.Color(0x28152c), new THREE.Color(0xd95b43), t);
+                studioLights.ambient.intensity = 0.48 + t * 0.35;
+                studioLights.keyLight.intensity = 1.4 + t * 1.0;
+                studioLights.keyLight.color.setHex(0xff8c5a);
+                phaseLabel = 'ATARDECER • LUCES ACTIVAS';
+                isDark = (sunElevation < 0.08);
+            } else {
+                // Noche profunda F1
+                skyColor.setHex(0x05060b);
+                studioLights.ambient.intensity = 0.24;
+                studioLights.keyLight.intensity = 0.55;
+                studioLights.keyLight.color.setHex(0x64748b);
+                phaseLabel = 'NOCHE • FAROS LED ACTIVOS';
+                isDark = true;
+            }
+
+            scene.background.copy(skyColor);
+            scene.fog.color.copy(skyColor);
+            scene.fog.density = isDark ? 0.011 : 0.0065;
+
+            // Encendido automático de los faros del auto en la oscuridad
+            carLightsOn = isDark;
+            headLightMaterial.emissiveIntensity = isDark ? 4.2 : 1.1;
+            tailLightMaterial.emissiveIntensity = isDark ? 4.0 : 2.0;
+            if (carSpotLightLeft && carSpotLightRight) {
+                const targetSpot = isDark ? 4.5 : 0.0;
+                carSpotLightLeft.intensity = targetSpot;
+                carSpotLightRight.intensity = targetSpot;
+            }
+
+            const hudTimeEl = document.getElementById('hud-timeofday-label');
+            if (hudTimeEl) hudTimeEl.innerHTML = `<i class="fa-solid ${isDark ? 'fa-moon text-indigo-300' : 'fa-sun text-amber-300'} mr-1"></i>${phaseLabel}`;
+        }
+
+        /**
+         * Posiciona el hiperauto sobre la parrilla de salida del circuito y reinicia telemetría.
+         */
+        function resetCarOnTrackGrid() {
+            const startNode = trackPoints[0];
+            carPhysics.position.copy(startNode.point);
+            carPhysics.position.y = 0.08;
+            carPhysics.heading = Math.atan2(startNode.tangent.x, startNode.tangent.z);
+            carPhysics.velocity.set(0, 0, 0);
+            carPhysics.speedMS = 0;
+            carPhysics.speedKmh = 0;
+            carPhysics.angularVelocity = 0;
+            carPhysics.steerAngle = 0;
+            carPhysics.pitchAngle = 0;
+            carPhysics.rollAngle = 0;
+            carPhysics.rpm = 1100;
+            carPhysics.gear = 1;
+            carPhysics.lapCount = 1;
+            carPhysics.lapStartTime = performance.now();
+            carPhysics.passedHalfway = false;
+
+            document.getElementById('hud-track-name').textContent = `${window.gameConfig.track.toUpperCase()} GP`;
+            document.getElementById('hud-lap-counter').textContent = `1 / 3`;
+        }
+
+        /**
+         * Alterna en tiempo real entre "Cámara Exterior" (Persecución dinámica) y "Cámara Interior" (Cabina con volante).
+         */
+        function toggleRaceCameraMode() {
+            raceCameraView = (raceCameraView === 'EXTERIOR') ? 'INTERIOR' : 'EXTERIOR';
+            const labelEl = document.getElementById('race-cam-label');
+            const iconEl = document.getElementById('race-cam-icon');
+
+            if (raceCameraView === 'INTERIOR') {
+                labelEl.textContent = 'INTERIOR';
+                iconEl.className = 'fa-solid fa-dharmachakra text-[#e53847]';
+                if (cockpitGroup) cockpitGroup.visible = true;
+            } else {
+                labelEl.textContent = 'EXTERIOR';
+                iconEl.className = 'fa-solid fa-car-side text-[#e53847]';
+                if (cockpitGroup) cockpitGroup.visible = false;
+            }
+            updateViewportAndCameraFov();
+        }
+
+        /**
+         * Configura la visibilidad de los botones táctiles vs Giroscopio según `window.gameConfig.controlType`.
+         */
+        function configureRaceControlsUI() {
+            const isGyro = (window.gameConfig.controlType === 'Giroscopio');
+            const touchSteeringEl = document.getElementById('touch-steering-group');
+            const gyroIndicatorEl = document.getElementById('gyro-hud-indicator');
+            const gyroStatusBoxEl = document.getElementById('gyro-status-box');
+            const gyroCalibrateBtn = document.getElementById('btn-gyro-calibrate');
+
+            document.getElementById('gyro-sens-display').textContent = `${window.gameConfig.sensitivity}%`;
+
+            if (isGyro) {
+                touchSteeringEl.classList.add('hidden');
+                gyroIndicatorEl.classList.remove('hidden');
+                gyroIndicatorEl.classList.add('flex');
+                gyroStatusBoxEl.classList.remove('hidden');
+                gyroCalibrateBtn.classList.remove('hidden');
+                gyroCalibrateBtn.classList.add('flex');
+                requestAndCalibrateGyroscope();
+            } else {
+                touchSteeringEl.classList.remove('hidden');
+                gyroIndicatorEl.classList.add('hidden');
+                gyroIndicatorEl.classList.remove('flex');
+                gyroStatusBoxEl.classList.add('hidden');
+                gyroCalibrateBtn.classList.add('hidden');
+                gyroCalibrateBtn.classList.remove('flex');
+            }
+        }
+
+        /**
+         * Procesa la inclinación del dispositivo móvil (`gamma` / `beta`) aplicando la sensibilidad de `gameConfig`
+         * y soportando automáticamente tanto modo Vertical (Portrait) como Horizontal (Landscape normal e invertido).
+         */
+        function handleDeviceOrientation(event) {
+            if (!isRacingMode || window.gameConfig.controlType !== 'Giroscopio') return;
+
+            // Obtener ángulo de orientación de la pantalla (0 = Vertical, 90 = Horizontal Izq, -90/270 = Horizontal Der)
+            let screenAngle = 0;
+            if (window.screen && window.screen.orientation && typeof window.screen.orientation.angle === 'number') {
+                screenAngle = window.screen.orientation.angle;
+            } else if (typeof window.orientation === 'number') {
+                screenAngle = window.orientation;
+            } else {
+                screenAngle = window.innerWidth > window.innerHeight ? 90 : 0;
+            }
+
+            let rawTiltDegrees = 0;
+            if (screenAngle === 90) {
+                rawTiltDegrees = event.beta || 0;
+            } else if (screenAngle === -90 || screenAngle === 270) {
+                rawTiltDegrees = -(event.beta || 0);
+            } else {
+                // Modo Vertical (Portrait)
+                rawTiltDegrees = event.gamma || 0;
+            }
+
+            // Limitar a [-35°, 35°] y escalar con la sensibilidad configurada
+            const clampedTilt = Math.max(-35, Math.min(35, rawTiltDegrees - controlState.gyroCalibrationOffset));
+            const sensMultiplier = (window.gameConfig.sensitivity / 55);
+            controlState.gyroRawSteer = Math.max(-1, Math.min(1, (clampedTilt / 25) * sensMultiplier));
+
+            // Actualizar barra visual de inclinación en el HUD
+            const tiltBar = document.getElementById('gyro-tilt-bar');
+            if (tiltBar) {
+                const pct = 50 + controlState.gyroRawSteer * 42;
+                tiltBar.style.left = `${pct}%`;
+            }
+        }
+
+        /**
+         * Configura los eventos Multitouch independientes para Acelerador, Freno y Botones de Dirección,
+         * además de soporte para teclado en pruebas de escritorio.
+         */
+        function setupRaceControlListeners() {
+            const bindPedalButton = (elementId, onPress, onRelease) => {
+                const el = document.getElementById(elementId);
+                if (!el) return;
+
+                const startHandler = (e) => {
+                    e.preventDefault();
+                    el.classList.add('pressed');
+                    onPress();
+                };
+                const endHandler = (e) => {
+                    e.preventDefault();
+                    el.classList.remove('pressed');
+                    onRelease();
+                };
+
+                el.addEventListener('touchstart', startHandler, { passive: false });
+                el.addEventListener('touchend', endHandler, { passive: false });
+                el.addEventListener('touchcancel', endHandler, { passive: false });
+                el.addEventListener('mousedown', startHandler);
+                el.addEventListener('mouseup', endHandler);
+                el.addEventListener('mouseleave', endHandler);
+            };
+
+            // Pedal Acelerador Multitouch
+            bindPedalButton('btn-pedal-gas',
+                () => {
+                    controlState.throttle = 1;
+                    document.getElementById('gas-pressure-bar').style.width = '100%';
+                },
+                () => {
+                    controlState.throttle = 0;
+                    document.getElementById('gas-pressure-bar').style.width = '0%';
+                }
+            );
+
+            // Pedal Freno Multitouch
+            bindPedalButton('btn-pedal-brake',
+                () => {
+                    controlState.brake = 1;
+                    document.getElementById('brake-pressure-bar').style.width = '100%';
+                },
+                () => {
+                    controlState.brake = 0;
+                    document.getElementById('brake-pressure-bar').style.width = '0%';
+                }
+            );
+
+            // Dirección Izquierda / Derecha Multitouch
+            bindPedalButton('btn-steer-left',
+                () => { controlState.left = true; },
+                () => { controlState.left = false; }
+            );
+            bindPedalButton('btn-steer-right',
+                () => { controlState.right = true; },
+                () => { controlState.right = false; }
+            );
+
+            // Soporte adicional de Teclado (WASD / Flechas)
+            window.addEventListener('keydown', (e) => {
+                if (!isRacingMode) return;
+                if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                    controlState.throttle = 1;
+                    document.getElementById('btn-pedal-gas').classList.add('pressed');
+                    document.getElementById('gas-pressure-bar').style.width = '100%';
+                }
+                if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                    controlState.brake = 1;
+                    document.getElementById('btn-pedal-brake').classList.add('pressed');
+                    document.getElementById('brake-pressure-bar').style.width = '100%';
+                }
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') controlState.left = true;
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') controlState.right = true;
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (!isRacingMode) return;
+                if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                    controlState.throttle = 0;
+                    document.getElementById('btn-pedal-gas').classList.remove('pressed');
+                    document.getElementById('gas-pressure-bar').style.width = '0%';
+                }
+                if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                    controlState.brake = 0;
+                    document.getElementById('btn-pedal-brake').classList.remove('pressed');
+                    document.getElementById('brake-pressure-bar').style.width = '0%';
+                }
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') controlState.left = false;
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') controlState.right = false;
+            });
+        }
+
+        /**
+         * Motor de Físicas de Conducción en Pista:
+         * - Aceleración progresiva según especificaciones del hiperauto
+         * - Frenada con transferencia de peso (cabeceo / pitch)
+         * - Inercia lateral y derrape en curvas a alta velocidad
+         * - Resistencia aerodinámica cuadrática del viento (drag)
+         * - Colisión física y rebote contra los muros de la pista
+         */
+        function stepRacePhysics(dt) {
+            const specs = HYPERCAR_SPECS[window.gameConfig.selectedCar];
+            const maxTopSpeedMS = ( parseFloat(specs.topSpeed) || 345 ) / 3.6;
+            const enginePowerFactor = (specs.bars.accel / 95) * 30.0;
+
+            // 1. Entrada de dirección (Táctil o Giroscopio) modulada por sensibilidad
+            const sensFactor = 0.55 + (window.gameConfig.sensitivity / 100) * 0.9;
+            if (window.gameConfig.controlType === 'Giroscopio') {
+                carPhysics.targetSteer = -controlState.gyroRawSteer;
+            } else {
+                const rawTouchSteer = (controlState.left ? 1 : 0) - (controlState.right ? 1 : 0);
+                carPhysics.targetSteer = rawTouchSteer * sensFactor;
+            }
+
+            // Suavizado progresivo de dirección
+            carPhysics.steerAngle += (carPhysics.targetSteer - carPhysics.steerAngle) * Math.min(1, dt * 8.5);
+
+            // 2. Fuerza longitudinal: Aceleración progresiva, Frenada y Drag Aerodinámico
+            const forwardDir = new THREE.Vector3(Math.sin(carPhysics.heading), 0, Math.cos(carPhysics.heading));
+            const rightDir = new THREE.Vector3(forwardDir.z, 0, -forwardDir.x);
+
+            // Velocidad actual proyectada sobre el eje frontal y eje lateral (derrape)
+            let forwardSpeed = carPhysics.velocity.dot(forwardDir);
+            let lateralSpeed = carPhysics.velocity.dot(rightDir);
+
+            // Curva de par motor progresiva
+            const speedRatio = Math.min(1, Math.abs(forwardSpeed) / maxTopSpeedMS);
+            const driveForce = controlState.throttle * enginePowerFactor * (1.0 - speedRatio * 0.55);
+
+            // Frenada potente con opción de reversa suave si está detenido
+            let brakeForce = 0;
+            if (controlState.brake > 0) {
+                if (forwardSpeed > 1.2) {
+                    brakeForce = -controlState.brake * 44.0;
+                } else {
+                    brakeForce = -controlState.brake * 12.0; // Reversa
+                }
+            }
+
+            // Resistencia aerodinámica del viento (proporcional al cuadrado de la velocidad) + rodadura
+            const aeroDragCoeff = 0.0032 * (specs.bars.aero / 95);
+            const aeroDragForce = -Math.sign(forwardSpeed) * (forwardSpeed * forwardSpeed) * aeroDragCoeff;
+            const rollingResistance = -forwardSpeed * 0.25;
+
+            const netLongitudinalAccel = driveForce + brakeForce + aeroDragForce + rollingResistance;
+            forwardSpeed += netLongitudinalAccel * dt;
+            forwardSpeed = Math.max(-18, Math.min(maxTopSpeedMS, forwardSpeed));
+
+            // 3. Giro, Inercia en Curvas y Derrape (Slip)
+            const speedTurnFactor = Math.min(1, Math.abs(forwardSpeed) / 8.0);
+            const highSpeedUndersteer = 1.0 / (1.0 + Math.pow(Math.abs(forwardSpeed) / 55, 1.35));
+            const turnRate = carPhysics.steerAngle * 2.35 * speedTurnFactor * highSpeedUndersteer * Math.sign(forwardSpeed || 1);
+
+            carPhysics.heading += turnRate * dt;
+
+            // Fuerza centrífuga que induce deslizamiento lateral en curvas rápidas
+            lateralSpeed += (turnRate * forwardSpeed * 0.42) * dt;
+
+            // Agarre lateral del neumático (menor si se frena brusco en curva)
+            const lateralGrip = controlState.brake > 0 ? 4.2 : 6.8;
+            lateralSpeed *= Math.max(0, 1 - lateralGrip * dt);
+            carPhysics.driftSlip = Math.abs(lateralSpeed);
+
+            // Reconstruir vector de velocidad global con inercia
+            const newForwardDir = new THREE.Vector3(Math.sin(carPhysics.heading), 0, Math.cos(carPhysics.heading));
+            const newRightDir = new THREE.Vector3(newForwardDir.z, 0, -newForwardDir.x);
+
+            carPhysics.velocity.copy(newForwardDir).multiplyScalar(forwardSpeed)
+                .addScaledVector(newRightDir, lateralSpeed);
+
+            // Actualizar posición en la pista
+            carPhysics.position.addScaledVector(carPhysics.velocity, dt);
+            carPhysics.speedMS = forwardSpeed;
+            carPhysics.speedKmh = Math.abs(forwardSpeed) * 3.6;
+
+            // 4. Transferencia de Peso Dinámica (Pitch en frenada/aceleración y Roll en curvas)
+            const targetPitch = -netLongitudinalAccel * 0.0016; // Cabeceo hacia adelante al frenar
+            const targetRoll = -carPhysics.steerAngle * Math.min(1, carPhysics.speedKmh / 140) * 0.055;
+            carPhysics.pitchAngle += (targetPitch - carPhysics.pitchAngle) * Math.min(1, dt * 10);
+            carPhysics.rollAngle += (targetRoll - carPhysics.rollAngle) * Math.min(1, dt * 10);
+
+            // 5. Detección de Piano (Bordillo) y Físicas de Choque contra los Muros
+            resolveTrackBoundariesAndCollisions();
+
+            // 6. Calcular Marcha (1 a 8) y RPM para el HUD y Tablero Digital
+            updateGearboxAndHUD(aeroDragForce);
+        }
+
+        /**
+         * Comprueba la distancia del hiperauto al centro de la pista, aplica vibración sobre los pianos
+         * y resuelve colisiones elásticas con pérdida de velocidad contra las barreras.
+         */
+        function resolveTrackBoundariesAndCollisions() {
+            if (!trackPoints.length) return;
+
+            // Buscar el segmento de pista más cercano
+            let closestIdx = 0;
+            let minDistSq = Infinity;
+            for (let i = 0; i < trackPoints.length; i++) {
+                const dx = carPhysics.position.x - trackPoints[i].point.x;
+                const dz = carPhysics.position.z - trackPoints[i].point.z;
+                const dSq = dx * dx + dz * dz;
+                if (dSq < minDistSq) {
+                    minDistSq = dSq;
+                    closestIdx = i;
+                }
+            }
+
+            // Control de vueltas
+            if (closestIdx > trackPoints.length * 0.45 && closestIdx < trackPoints.length * 0.65) {
+                carPhysics.passedHalfway = true;
+            }
+            if (carPhysics.passedHalfway && closestIdx < 12 && carPhysics.lastTrackIndex > trackPoints.length - 20) {
+                carPhysics.passedHalfway = false;
+                carPhysics.lapCount++;
+                carPhysics.lapStartTime = performance.now();
+                document.getElementById('hud-lap-counter').textContent = `${carPhysics.lapCount} / 3`;
+            }
+            carPhysics.lastTrackIndex = closestIdx;
+
+            const node = trackPoints[closestIdx];
+            const toCar = new THREE.Vector3().subVectors(carPhysics.position, node.point);
+            const lateralOffset = toCar.dot(node.normal);
+            const absOffset = Math.abs(lateralOffset);
+
+            // Vibración de suspensión al pisar los pianos rojos y blancos
+            if (absOffset > trackHalfWidth - 0.4 && absOffset <= trackHalfWidth + 1.8) {
+                const rumble = Math.sin(performance.now() * 0.08) * 0.025 * Math.min(1, carPhysics.speedKmh / 80);
+                carPhysics.position.y = 0.08 + Math.abs(rumble);
+            } else {
+                carPhysics.position.y = 0.08;
+            }
+
+            // Colisión física contra las barreras exteriores
+            const maxAllowedOffset = trackHalfWidth + 1.55;
+            if (absOffset > maxAllowedOffset) {
+                const sign = Math.sign(lateralOffset);
+                const penetration = absOffset - maxAllowedOffset;
+
+                // Reposicionar dentro del muro
+                carPhysics.position.addScaledVector(node.normal, -sign * penetration);
+
+                // Rebote físico del vector velocidad contra la normal del muro y fricción por impacto
+                const wallNormal = node.normal.clone().multiplyScalar(sign);
+                const impactSpeed = carPhysics.velocity.dot(wallNormal);
+                if (impactSpeed > 0) {
+                    carPhysics.velocity.addScaledVector(wallNormal, -1.45 * impactSpeed);
+                    carPhysics.velocity.multiplyScalar(0.76); // Pérdida de energía cinética por choque
+                }
+
+                // Alinear ligeramente la dirección del auto con la tangente del muro
+                const trackAngle = Math.atan2(node.tangent.x, node.tangent.z);
+                carPhysics.heading += (trackAngle - carPhysics.heading) * 0.18;
+
+                // Destello visual de impacto si el golpe es fuerte
+                if (carPhysics.speedKmh > 45) {
+                    const flashEl = document.getElementById('collision-overlay');
+                    if (flashEl) {
+                        flashEl.style.opacity = '0.55';
+                        setTimeout(() => { flashEl.style.opacity = '0'; }, 160);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Calcula la transmisión secuencial de 8 velocidades, actualiza el HUD y el Tablero 3D.
+         */
+        function updateGearboxAndHUD(aeroDragForce) {
+            const spd = carPhysics.speedKmh;
+            const gearThresholds = [0, 48, 92, 138, 182, 228, 272, 312];
+            let currentGear = 1;
+            for (let g = gearThresholds.length - 1; g >= 0; g--) {
+                if (spd >= gearThresholds[g]) {
+                    currentGear = g + 1;
+                    break;
+                }
+            }
+            carPhysics.gear = carPhysics.speedMS < -1 ? 'R' : currentGear;
+
+            const minSpd = gearThresholds[currentGear - 1] || 0;
+            const maxSpd = gearThresholds[currentGear] || 355;
+            const gearProgress = Math.max(0, Math.min(1, (spd - minSpd) / (maxSpd - minSpd)));
+            carPhysics.rpm = 1200 + gearProgress * 7600 + (controlState.throttle * 350);
+
+            // Actualizar elementos DOM del HUD
+            document.getElementById('hud-speed').textContent = String(Math.round(spd)).padStart(3, '0');
+            document.getElementById('hud-gear').textContent = String(carPhysics.gear);
+
+            const dragPct = Math.min(100, Math.round((Math.abs(aeroDragForce) / 18) * 100));
+            document.getElementById('hud-aero-drag').textContent = `DRAG: ${dragPct}%`;
+
+            const driftBadge = document.getElementById('hud-drift-badge');
+            if (driftBadge) {
+                driftBadge.style.opacity = (carPhysics.driftSlip > 2.6 && spd > 50) ? '1' : '0';
+            }
+
+            // Cronómetro de vuelta
+            const elapsedSec = (performance.now() - carPhysics.lapStartTime) / 1000;
+            const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+            const secs = (elapsedSec % 60).toFixed(2).padStart(5, '0');
+            const timerEl = document.getElementById('hud-lap-timer');
+            if (timerEl) timerEl.textContent = `${mins}:${secs}`;
+
+            // Barra de LEDs RPM en el HUD superior
+            const ledsContainer = document.getElementById('hud-rpm-leds');
+            if (ledsContainer) {
+                const leds = ledsContainer.children;
+                const activeCount = Math.round(((carPhysics.rpm - 1100) / 8000) * leds.length);
+                for (let i = 0; i < leds.length; i++) {
+                    leds[i].style.opacity = i < activeCount ? '1' : '0.22';
+                }
+            }
+
+            // Actualizar textura del Tablero Digital dentro de la Cabina 3D
+            updateDigitalDashboardCanvas();
+        }
+
+        /**
+         * Actualiza la transformación del auto, giro del volante, partículas de viento y cámara (Exterior / Interior).
+         */
+        function updateRaceVisualsAndCamera(dt) {
+            // 1. Posición y orientación global del hiperauto
+            carRootGroup.position.copy(carPhysics.position);
+            carRootGroup.rotation.y = carPhysics.heading;
+
+            // Transferencia de peso (Pitch y Roll sobre el chasis)
+            if (currentCarMeshGroup) {
+                currentCarMeshGroup.rotation.x = carPhysics.pitchAngle;
+                currentCarMeshGroup.rotation.z = carPhysics.rollAngle;
+            }
+
+            // 2. Giro de las ruedas y dirección de las ruedas delanteras
+            const wheelSpin = (carPhysics.speedMS * dt) / 0.35;
+            wheelGroups.forEach((wheel, index) => {
+                wheel.rotation.x += wheelSpin;
+                if (index < 2) {
+                    // Ruedas delanteras giran con la dirección
+                    wheel.rotation.y = carPhysics.steerAngle * 0.42;
+                }
+            });
+
+            // 3. Giro sincronizado del volante deportivo en la Cabina 3D
+            if (steeringWheelMesh) {
+                steeringWheelMesh.rotation.z = -carPhysics.steerAngle * 1.35;
+            }
+
+            // 4. Animar Partículas de Viento aerodinámico alrededor del auto
+            if (windParticles && windGeometry) {
+                windParticles.position.copy(carPhysics.position);
+                windParticles.rotation.y = carPhysics.heading;
+                const posAttr = windGeometry.attributes.position;
+                const windFlowSpeed = (12 + carPhysics.speedKmh * 0.55) * dt;
+
+                for (let i = 0; i < posAttr.count; i++) {
+                    let z = posAttr.getZ(i) - windFlowSpeed;
+                    if (z < -14) {
+                        z = 14;
+                        posAttr.setX(i, (Math.random() - 0.5) * 12);
+                    }
+                    posAttr.setZ(i, z);
+                }
+                posAttr.needsUpdate = true;
+                windParticles.material.opacity = Math.min(0.75, 0.15 + (carPhysics.speedKmh / 260) * 0.6);
+            }
+
+            // 5. Posicionar Cámara según modo ("EXTERIOR" vs "INTERIOR") adaptándose a Vertical (Portrait) y Horizontal (Landscape)
+            const forwardVec = new THREE.Vector3(Math.sin(carPhysics.heading), 0, Math.cos(carPhysics.heading));
+            const rightVec = new THREE.Vector3(forwardVec.z, 0, -forwardVec.x);
+            const isPortrait = window.innerHeight > window.innerWidth;
+
+            if (raceCameraView === 'INTERIOR') {
+                // En Vertical (Portrait) retrocedemos unos centímetros el punto de vista para abarcar todo el volante y el tablero digital
+                const eyeBackOffset = isPortrait ? -0.30 : -0.18;
+                const eyeHeightOffset = isPortrait ? 0.87 : 0.86;
+                const driverEyePos = carPhysics.position.clone()
+                    .add(new THREE.Vector3(0, eyeHeightOffset, 0))
+                    .addScaledVector(forwardVec, eyeBackOffset);
+                camera.position.copy(driverEyePos);
+
+                const lookAtTarget = carPhysics.position.clone()
+                    .add(new THREE.Vector3(0, 0.75 - carPhysics.pitchAngle * 2.2, 0))
+                    .addScaledVector(forwardVec, 12.0)
+                    .addScaledVector(rightVec, -carPhysics.steerAngle * 1.4);
+                camera.lookAt(lookAtTarget);
+            } else {
+                // Cámara Exterior de persecución con ajuste de distancia para Vertical y Horizontal
+                const speedPullback = Math.min(1.1, (carPhysics.speedKmh / 320) * 1.1);
+                const baseDistance = isPortrait ? 6.8 : 5.6;
+                const baseHeight = isPortrait ? 2.15 : 1.85;
+                const desiredCamPos = carPhysics.position.clone()
+                    .addScaledVector(forwardVec, -(baseDistance + speedPullback))
+                    .addScaledVector(rightVec, carPhysics.steerAngle * 0.65)
+                    .add(new THREE.Vector3(0, baseHeight, 0));
+
+                camera.position.lerp(desiredCamPos, Math.min(1, dt * 11));
+                const lookTarget = carPhysics.position.clone()
+                    .addScaledVector(forwardVec, 3.8)
+                    .add(new THREE.Vector3(0, 0.65, 0));
+                camera.lookAt(lookTarget);
+            }
+        }
+
+        /**
+         * Configura controles táctiles y de ratón para girar el hiperauto suavemente en el Showroom.
+         */
+        function setupInteractionListeners(canvas) {
+            const onPointerDown = (clientX, clientY) => {
+                isDragging = true;
+                previousPointerX = clientX;
+                previousPointerY = clientY;
+                lastInteractionTime = performance.now();
+            };
+
+            const onPointerMove = (clientX, clientY) => {
+                if (!isDragging) return;
+                const deltaX = clientX - previousPointerX;
+                previousPointerX = clientX;
+                previousPointerY = clientY;
+
+                const sensFactor = (window.gameConfig.sensitivity / 65) * 0.008;
+                targetRotationY += deltaX * sensFactor;
+                lastInteractionTime = performance.now();
+            };
+
+            const onPointerUp = () => {
+                isDragging = false;
+            };
+
+            // Mouse
+            canvas.addEventListener('mousedown', (e) => onPointerDown(e.clientX, e.clientY));
+            window.addEventListener('mousemove', (e) => onPointerMove(e.clientX, e.clientY));
+            window.addEventListener('mouseup', onPointerUp);
+
+            // Touch móvil
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 1) {
+                    onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchend', onPointerUp);
+        }
+
+        /**
+         * Ajusta cámara, FOV dinámico y renderizador al redimensionar la pantalla móvil o rotar entre Vertical y Horizontal.
+         */
+        function updateViewportAndCameraFov() {
+            if (!camera || !renderer) return;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const isPortrait = height > width;
+
+            camera.aspect = width / height;
+
+            // Ajustar FOV automáticamente para que tanto en Vertical como en Horizontal el hiperauto y la cabina se vean completos
+            if (!isRacingMode) {
+                camera.fov = isPortrait ? 58 : 42;
+            } else if (raceCameraView === 'INTERIOR') {
+                camera.fov = isPortrait ? 78 : 62;
+            } else {
+                camera.fov = isPortrait ? 62 : 48;
+            }
+
+            camera.updateProjectionMatrix();
+            const safePixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+            renderer.setPixelRatio(safePixelRatio);
+            renderer.setSize(width, height);
+            if (composer) { composer.setPixelRatio(safePixelRatio); composer.setSize(width, height); }
+
+            // Actualizar icono de orientación en el HUD
+            const orientIcon = document.getElementById('hud-orientation-icon');
+            const orientBadge = document.getElementById('hud-orientation-badge');
+            if (orientIcon) {
+                orientIcon.className = isPortrait
+                    ? 'fa-solid fa-mobile-screen text-[#e53847]'
+                    : 'fa-solid fa-mobile-screen rotate-90 text-emerald-400';
+            }
+            if (orientBadge) {
+                orientBadge.textContent = isPortrait ? 'MODO VERTICAL' : 'MODO HORIZONTAL';
+            }
+        }
+
+        function onWindowResize() {
+            updateViewportAndCameraFov();
+        }
+
+        /**
+         * Bucle principal de animación del Showroom 3D y Simulación en Pista.
+         */
+        let lastFrameTime = performance.now();
+
+        function animateShowroom(timestamp) {
+            requestAnimationFrame(animateShowroom);
+
+            const dt = Math.min(0.05, Math.max(0.001, (timestamp - lastFrameTime) / 1000));
+            lastFrameTime = timestamp;
+
+            // =========================================================
+            // RAMA A: SIMULACIÓN ACTIVA EN PISTA (PARTE 2)
+            // =========================================================
+            if (isRacingMode) {
+                updateDynamicWeatherAndLighting(dt);
+                stepRacePhysics(dt);
+                updateRaceVisualsAndCamera(dt);
+                renderFrame(dt);
+                return;
+            }
+
+            // =========================================================
+            // RAMA B: SHOWROOM INTERACTIVO (PARTE 1)
+            // =========================================================
+            // Auto-rotación suave si el usuario no está arrastrando manualmente
+            if (!isDragging && (timestamp - lastInteractionTime > 1800)) {
+                targetRotationY += autoRotateSpeed;
+            }
+
+            // Interpolación suave de la rotación del auto
+            currentRotationY += (targetRotationY - currentRotationY) * 0.08;
+            if (carRootGroup) {
+                carRootGroup.rotation.y = currentRotationY;
+            }
+
+            // Animación de escala (rebote de suspensión suave al cambiar modelo)
+            if (currentCarMeshGroup) {
+                currentCarMeshGroup.scale.lerp(new THREE.Vector3(1, 1, 1), 0.12);
+            }
+
+            // Giro lento de las ruedas para lucir los rines y discos
+            wheelGroups.forEach((wheel) => {
+                wheel.rotation.x += 0.008;
+            });
+
+            // Animación del alerón activo (DRS / Carga aerodinámica)
+            if (activeSpoilerMesh) {
+                const targetY = aeroDeployed ? 0.84 : 0.74;
+                const targetRotX = aeroDeployed ? 0.24 : 0.0;
+                activeSpoilerMesh.position.y += (targetY - activeSpoilerMesh.position.y) * 0.1;
+                activeSpoilerMesh.rotation.x += (targetRotX - activeSpoilerMesh.rotation.x) * 0.1;
+            }
+
+            // Interpolación suave de la posición de cámara según el preset elegido
+            currentCamPos.lerp(targetCamPos, 0.06);
+            camera.position.copy(currentCamPos);
+            const preset = CAMERA_PRESETS[cameraPresetIndex];
+            camera.lookAt(0, preset.lookY, 0);
+
+            renderFrame(dt);
+        }
+
+        // Iniciar aplicación al cargar la ventana
+        window.onload = function () {
+            initShowroom3D();
+            animateShowroom(0);
+        };
+    </script>
+</body>
+</html>
